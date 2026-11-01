@@ -1,0 +1,12 @@
+# Copy to wrangler.toml and fill in your own D1 database id (npx wrangler d1 create x-bookmarks).
+name = "x-bookmarks"
+pages_build_output_dir = "site"
+compatibility_date = "2026-05-01"
+
+[ai]
+binding = "AI"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "x-bookmarks"
+database_id = "<your-d1-database-id>"

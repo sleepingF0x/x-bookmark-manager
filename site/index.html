@@ -1,0 +1,1036 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>X 书签管理器</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --paper: oklch(0.975 0.008 80);
+  --paper-2: oklch(0.94 0.012 80);
+  --paper-3: oklch(0.91 0.014 80);
+  --ink: oklch(0.24 0.012 60);
+  --ink-2: oklch(0.44 0.012 60);
+  --ink-3: oklch(0.58 0.01 60);
+  --rule: oklch(0.88 0.012 80);
+  --accent: oklch(0.54 0.17 32);
+  --accent-soft: oklch(0.93 0.035 32);
+  --ochre: oklch(0.55 0.11 70);
+  --ochre-soft: oklch(0.93 0.04 80);
+  --mark: oklch(0.9 0.09 90);
+  --serif: "Songti SC", "Noto Serif SC", "Source Han Serif SC", serif;
+  --sans: -apple-system, "SF Pro Text", "PingFang SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --r-sm: 4px; --r-md: 8px; --r-pill: 999px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: oklch(0.185 0.006 60);
+    --paper-2: oklch(0.215 0.007 60);
+    --paper-3: oklch(0.255 0.008 60);
+    --ink: oklch(0.92 0.008 80);
+    --ink-2: oklch(0.74 0.01 75);
+    --ink-3: oklch(0.58 0.01 70);
+    --rule: oklch(0.3 0.008 60);
+    --accent: oklch(0.7 0.14 35);
+    --accent-soft: oklch(0.3 0.06 32);
+    --ochre: oklch(0.75 0.11 75);
+    --ochre-soft: oklch(0.3 0.05 75);
+    --mark: oklch(0.42 0.08 90);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: oklch(0.185 0.006 60);
+  --paper-2: oklch(0.215 0.007 60);
+  --paper-3: oklch(0.255 0.008 60);
+  --ink: oklch(0.92 0.008 80);
+  --ink-2: oklch(0.74 0.01 75);
+  --ink-3: oklch(0.58 0.01 70);
+  --rule: oklch(0.3 0.008 60);
+  --accent: oklch(0.7 0.14 35);
+  --accent-soft: oklch(0.3 0.06 32);
+  --ochre: oklch(0.75 0.11 75);
+  --ochre-soft: oklch(0.3 0.05 75);
+  --mark: oklch(0.42 0.08 90);
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+body { margin: 0; background: var(--paper); color: var(--ink); font: 15px/1.7 var(--sans); touch-action: manipulation; }
+button, input, select { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: var(--r-sm); }
+.skip { position: absolute; left: -9999px; }
+.skip:focus { left: 16px; top: 12px; z-index: 30; background: var(--paper); padding: 4px 8px; }
+a { color: var(--accent); }
+
+/* Three panes: catalogue drawer | index cards | reading desk. Each pane scrolls on its own. */
+.app { display: grid; grid-template-columns: 236px minmax(340px, 410px) minmax(0, 1fr); height: 100vh; height: 100dvh; }
+@media (min-width: 1500px) { .app { grid-template-columns: 252px 440px minmax(0, 1fr); } }
+@media (max-width: 1180px) { .app { grid-template-columns: 200px 340px minmax(0, 1fr); } }
+
+/* Sidebar */
+.side { background: var(--paper-2); border-right: 1px solid var(--rule); overflow-y: auto; padding: 26px 12px 24px; }
+.brand { padding: 0 10px 18px; }
+.brand h1 { font: 600 23px/1.2 var(--serif); margin: 0; letter-spacing: 0.04em; }
+.brand p { margin: 6px 0 0; font: 12px/1.5 var(--mono); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.nav { display: flex; flex-direction: column; gap: 1px; }
+.nav-item {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+  width: 100%; min-height: 34px; padding: 5px 10px; border: 0; border-radius: var(--r-sm);
+  background: transparent; text-align: left; color: var(--ink-2); font-size: 14px;
+}
+.nav-item .n { font: 12px var(--mono); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+@media (hover: hover) { .nav-item:hover { background: var(--paper-3); color: var(--ink); } }
+.nav-item[aria-current="true"] { background: var(--paper); color: var(--ink); font-weight: 600; box-shadow: 0 1px 2px oklch(0 0 0 / 0.08); }
+.nav-item[aria-current="true"] .n { color: var(--accent); }
+.side-label { margin: 20px 10px 6px; font: 11px var(--mono); letter-spacing: 0.12em; color: var(--ink-3); }
+.theme-toggle { margin: 18px 10px 0; padding: 0; border: 0; background: none; font: 12px var(--mono); color: var(--ink-3); min-height: 32px; }
+@media (hover: hover) { .theme-toggle:hover { color: var(--ink); } }
+.xbox { margin: 20px 10px 0; padding-top: 14px; border-top: 1px solid var(--rule); font: 12px/1.7 var(--mono); color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.xbox p { margin: 0; }
+.xbox .who { color: var(--ink-2); }
+.xbox .xmsg { margin-top: 6px; color: var(--ink-2); }
+.xbox .xmsg.err { color: var(--accent); }
+.xbox .xmsg:empty { display: none; }
+.xbox .acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.xbox .btn { min-height: 30px; padding: 0 12px; font: 12px var(--sans); color: var(--ink); text-decoration: none; display: inline-flex; align-items: center; }
+
+/* Buttons: one pill radius everywhere */
+.btn { min-height: 34px; padding: 0 14px; border: 1px solid var(--rule); border-radius: var(--r-pill); background: var(--paper); font-size: 13px; color: var(--ink); white-space: nowrap; }
+.btn.primary { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+.btn.danger { color: var(--accent); }
+.btn:disabled { opacity: 0.5; cursor: progress; }
+@media (hover: hover) { .btn:not(:disabled):hover { border-color: var(--ink-3); } }
+
+/* List pane */
+.listpane { display: flex; flex-direction: column; min-width: 0; min-height: 0; border-right: 1px solid var(--rule); }
+.lp-head { flex: none; padding: 20px 18px 0; }
+.lp-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.lp-bar { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 18px calc(10px + env(safe-area-inset-bottom)); border-top: 1px solid var(--rule); background: var(--paper-2); font-size: 13px; color: var(--ink-2); }
+.lp-bar:empty { display: none; }
+.lp-bar strong { font: 600 14px var(--mono); color: var(--ink); font-variant-numeric: tabular-nums; }
+.lp-bar .grow { flex: 1; }
+.lp-bar .msg { flex: 1 0 100%; font: 12px var(--mono); color: var(--ink-3); }
+.lp-bar .msg.err { color: var(--accent); }
+.lp-bar .msg:empty { display: none; }
+
+.search { position: relative; }
+.search input {
+  width: 100%; height: 42px; padding: 0 14px 0 38px; border: 1px solid var(--rule); border-radius: var(--r-md);
+  background: var(--paper); font-size: 15px; color: var(--ink); box-shadow: inset 0 1px 2px oklch(0 0 0 / 0.04);
+}
+.search input::placeholder { color: var(--ink-3); }
+.search input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.search svg { position: absolute; left: 12px; top: 12px; color: var(--ink-3); }
+.filters { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: 10px; font-size: 12px; color: var(--ink-2); }
+.filters label { display: inline-flex; align-items: center; gap: 5px; min-height: 28px; }
+.filters select { border: 1px solid var(--rule); border-radius: var(--r-sm); background: var(--paper); padding: 2px 4px; font-size: 12px; }
+.tagbar { display: flex; flex-wrap: wrap; gap: 0 4px; margin-top: 8px; }
+.tagbar .t { border: 0; background: none; padding: 1px 4px; min-height: 26px; font-size: 12px; color: var(--ink-2); }
+.tagbar .t .n { font: 10px var(--mono); color: var(--ink-3); margin-left: 2px; }
+@media (hover: hover) { .tagbar .t:hover { color: var(--accent); } }
+.tagbar .t[aria-pressed="true"] { color: var(--accent); font-weight: 600; }
+.seg { display: flex; flex-wrap: wrap; gap: 4px; }
+.chip { min-height: 28px; padding: 2px 10px; border: 1px solid var(--rule); border-radius: var(--r-pill); background: transparent; font-size: 12px; color: var(--ink-2); }
+@media (hover: hover) { .chip:hover { border-color: var(--ink-3); color: var(--ink); } }
+.chip[aria-pressed="true"] { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+.resultline { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin-top: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--ink); font-size: 12px; color: var(--ink-2); }
+.resultline strong { font: 600 12px var(--mono); color: var(--ink); font-variant-numeric: tabular-nums; }
+.active-tag { display: inline-flex; align-items: center; gap: 2px; min-height: 24px; padding: 0 4px 0 8px; border: 0; border-radius: var(--r-pill); background: var(--accent-soft); color: var(--accent); font-size: 12px; }
+.view-head h2 { font: 600 20px/1.3 var(--serif); margin: 0; }
+.view-head p { margin: 6px 0 0; color: var(--ink-2); font-size: 13px; line-height: 1.7; }
+.view-head .acts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-top: 12px; }
+.view-head .note { font: 12px var(--mono); color: var(--ink-3); }
+.view-head .note.err { color: var(--accent); }
+.view-head .seg { margin-top: 12px; }
+
+/* Index rows */
+.list { list-style: none; margin: 0; padding: 0; }
+.row { display: flex; align-items: stretch; border-bottom: 1px solid var(--rule); }
+.row[aria-current="true"] { background: var(--paper-3); }
+.row .pick { display: flex; align-items: flex-start; padding: 15px 0 0 16px; }
+.row .pick input { width: 17px; height: 17px; margin: 0; accent-color: var(--accent); }
+.hit {
+  flex: 1; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0 12px;
+  padding: 12px 18px; border: 0; background: none; text-align: left; color: inherit;
+}
+.row .pick + .hit { padding-left: 12px; }
+@media (hover: hover) { .row:not([aria-current="true"]):hover { background: var(--paper-2); } }
+.hit .t { display: block; font: 600 15px/1.45 var(--serif); color: var(--ink); }
+.row[aria-current="true"] .t { color: var(--accent); }
+.hit .s { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-top: 2px; font-size: 13px; line-height: 1.6; color: var(--ink-2); }
+.hit .m { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 8px; margin-top: 4px; font-size: 11.5px; color: var(--ink-3); }
+.hit .m .state { color: var(--ochre); }
+.hit .why { display: block; margin-top: 4px; font-size: 12px; color: var(--ink-2); }
+.hit .aside { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+.score { font: 10px/18px var(--mono); letter-spacing: 1px; color: var(--accent); white-space: nowrap; }
+.score .off { color: var(--rule); }
+.th { position: relative; width: 48px; height: 48px; border-radius: var(--r-sm); overflow: hidden; background: var(--paper-3); }
+.th img { width: 48px; height: 48px; object-fit: cover; display: block; outline: 1px solid oklch(0 0 0 / 0.08); outline-offset: -1px; }
+.th .v { position: absolute; right: 2px; bottom: 2px; font: 9px/14px var(--mono); padding: 0 3px; border-radius: 2px; background: oklch(0 0 0 / 0.6); color: #f2f2f2; }
+.flag { font: 10.5px/18px var(--mono); padding: 0 5px; border-radius: 3px; white-space: nowrap; }
+.flag.junk { background: var(--accent-soft); color: var(--accent); }
+.flag.expired { background: var(--ochre-soft); color: var(--ochre); }
+mark { background: var(--mark); color: inherit; border-radius: 2px; padding: 0 1px; }
+.more { display: block; margin: 16px auto 24px; min-height: 34px; padding: 0 16px; border: 1px solid var(--rule); border-radius: var(--r-pill); background: none; color: var(--ink-2); font-size: 12px; }
+.empty { padding: 40px 18px; color: var(--ink-3); font-size: 13px; }
+
+/* Reading desk */
+.reader { min-width: 0; overflow-y: auto; overscroll-behavior: contain; }
+.r-inner { max-width: 700px; margin: 0 auto; padding: 36px 48px 96px; }
+.r-back { display: none; }
+.r-empty { max-width: 420px; margin: 18vh auto 0; padding: 0 32px; color: var(--ink-3); font-size: 14px; line-height: 1.9; }
+.r-empty h2 { font: 600 20px var(--serif); color: var(--ink-2); margin: 0 0 8px; }
+.r-empty kbd { font: 11px/18px var(--mono); padding: 0 5px; border: 1px solid var(--rule); border-radius: var(--r-sm); }
+.r-kicker { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; margin: 0; font: 12px var(--mono); color: var(--ink-3); }
+.r-kicker .cat { color: var(--accent); }
+.r-title { margin: 10px 0 0; font: 600 27px/1.35 var(--serif); letter-spacing: 0.01em; text-wrap: balance; }
+.r-dek { margin: 10px 0 0; font-size: 15.5px; line-height: 1.8; color: var(--ink-2); }
+.r-tags { display: flex; flex-wrap: wrap; gap: 2px 10px; margin: 10px 0 0; font-size: 12px; }
+.r-tags button { border: 0; background: none; padding: 0; min-height: 24px; color: var(--ink-3); }
+.r-tags button::before { content: "#"; opacity: 0.6; }
+@media (hover: hover) { .r-tags button:hover { color: var(--accent); } }
+.r-reason { margin: 12px 0 0; font-size: 13px; color: var(--ink-2); }
+.r-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 16px; padding-bottom: 22px; border-bottom: 1px solid var(--ink); }
+.r-actions a.btn { display: inline-flex; align-items: center; text-decoration: none; }
+.r-actions .note { font: 12px var(--mono); color: var(--ink-3); }
+
+.post { margin-top: 26px; }
+.who { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; font-size: 14px; }
+.who b { font-weight: 600; }
+.who span { font: 12px var(--mono); color: var(--ink-3); }
+.body { margin: 10px 0 0; font-size: 16px; line-height: 1.85; white-space: pre-wrap; overflow-wrap: anywhere; }
+.body a, .article a, .thread a { color: var(--accent); text-decoration: none; }
+@media (hover: hover) { .body a:hover, .article a:hover, .thread a:hover { text-decoration: underline; } }
+
+.media { display: grid; gap: 4px; margin-top: 14px; border-radius: var(--r-md); overflow: hidden; }
+.media.n2, .media.n4 { grid-template-columns: 1fr 1fr; }
+.media.n3 { grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
+.media.n3 > :first-child { grid-row: span 2; }
+.media .m { position: relative; display: block; padding: 0; border: 0; background: var(--paper-3); overflow: hidden; }
+.media img, .media video { display: block; width: 100%; height: 100%; object-fit: cover; }
+.media.n1 img, .media.n1 video { height: auto; max-height: 72vh; object-fit: contain; }
+.media.n2 .m, .media.n4 .m { aspect-ratio: 4 / 3; }
+.media.n3 .m { aspect-ratio: 4 / 3; }
+.media.n3 > :first-child { aspect-ratio: auto; }
+.media .play { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); padding: 6px 14px; border-radius: var(--r-pill); background: oklch(0 0 0 / 0.62); color: #f4f4f4; font: 12px var(--mono); }
+
+.quote { margin-top: 14px; padding: 12px 14px; border: 1px solid var(--rule); border-radius: var(--r-md); }
+.quote .body { font-size: 14.5px; line-height: 1.75; margin-top: 6px; }
+.quote .who { font-size: 13px; }
+.quote .open { font-size: 12px; margin-left: auto; text-decoration: none; }
+.quote .media { margin-top: 10px; }
+
+.thread { margin-top: 22px; }
+.thread .lbl { font: 11px var(--mono); letter-spacing: 0.08em; color: var(--ink-3); }
+.thread .item { margin-top: 10px; padding: 10px 0 0; border-top: 1px dashed var(--rule); font-size: 15.5px; line-height: 1.85; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.article { margin-top: 26px; }
+.article .cover { display: block; width: 100%; border-radius: var(--r-md); background: var(--paper-3); }
+.article .a-title { margin: 18px 0 0; font: 600 23px/1.4 var(--serif); }
+.article p, .article li { font-size: 16px; line-height: 1.9; overflow-wrap: anywhere; }
+.article p { margin: 14px 0 0; }
+.article h3 { margin: 30px 0 0; font: 600 20px/1.45 var(--serif); }
+.article h4 { margin: 24px 0 0; font: 600 17px/1.5 var(--serif); }
+.article ul, .article ol { margin: 12px 0 0; padding-left: 1.4em; }
+.article li + li { margin-top: 6px; }
+.article blockquote { margin: 16px 0 0; padding: 2px 0 2px 16px; border-left: 2px solid var(--rule); color: var(--ink-2); }
+.article pre { margin: 14px 0 0; padding: 12px 14px; border-radius: var(--r-md); background: var(--paper-2); font: 13px/1.7 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.article figure { margin: 18px 0 0; }
+.article figure img { display: block; width: 100%; border-radius: var(--r-md); background: var(--paper-3); }
+.article figcaption { margin-top: 6px; font-size: 12px; color: var(--ink-3); text-align: center; }
+.article hr { margin: 28px auto; width: 40%; border: 0; border-top: 1px solid var(--rule); }
+
+.cards { margin-top: 22px; display: grid; gap: 8px; }
+.repo { display: grid; gap: 2px; padding: 12px 14px; border: 1px solid var(--rule); border-radius: var(--r-md); text-decoration: none; color: inherit; }
+@media (hover: hover) { .repo:hover { border-color: var(--ink-3); } }
+.repo .rn { font: 600 14px var(--mono); color: var(--ink); overflow-wrap: anywhere; }
+.repo .rs { font: 12px var(--mono); color: var(--ochre); }
+.repo .rd { font-size: 13px; color: var(--ink-2); }
+.links { margin: 18px 0 0; padding: 0; list-style: none; font-size: 13px; }
+.links .lbl, .related .lbl { font: 11px var(--mono); letter-spacing: 0.08em; color: var(--ink-3); }
+.links li + li { margin-top: 4px; }
+.links a { overflow-wrap: anywhere; text-decoration: none; }
+
+.related { margin-top: 40px; padding-top: 16px; border-top: 1px solid var(--rule); }
+.related ol { list-style: none; margin: 8px 0 0; padding: 0; }
+.related button { display: flex; width: 100%; gap: 10px; align-items: baseline; padding: 8px 0; border: 0; border-bottom: 1px solid var(--rule); background: none; text-align: left; }
+.related .rt { flex: 1; font: 600 14.5px/1.5 var(--serif); color: var(--ink); }
+.related .rc { font-size: 11.5px; color: var(--ink-3); white-space: nowrap; }
+@media (hover: hover) { .related button:hover .rt { color: var(--accent); } }
+
+/* Narrow screens: drawer becomes a header, the reading desk slides over the list */
+@media (max-width: 900px) {
+  .app { display: block; height: auto; }
+  .side { padding: 16px 16px 8px; border-right: 0; border-bottom: 1px solid var(--rule); overflow: visible; }
+  .brand { display: flex; align-items: baseline; justify-content: space-between; padding: 0 0 10px; }
+  .brand h1 { font-size: 20px; }
+  .nav { flex-direction: row; overflow-x: auto; gap: 4px; margin: 0 -16px; padding: 0 16px 6px; scrollbar-width: none; }
+  .nav::-webkit-scrollbar { display: none; }
+  .nav-item { width: auto; flex: none; white-space: nowrap; gap: 6px; }
+  .side-label, .theme-toggle { display: none; }
+  .xbox { margin: 8px 0 0; padding-top: 8px; }
+  .listpane { border-right: 0; }
+  .lp-head { padding: 14px 16px 0; }
+  .lp-scroll { overflow: visible; padding-bottom: 72px; }
+  .lp-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 5; padding-left: 16px; padding-right: 16px; }
+  .hit { padding: 12px 16px; }
+  .reader { position: fixed; inset: 0; z-index: 20; background: var(--paper); transform: translateX(100%); visibility: hidden; transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1), visibility 0s linear 220ms; }
+  body.reading .reader { transform: none; visibility: visible; transition: transform 220ms cubic-bezier(0.16, 1, 0.3, 1); }
+  body.reading { overflow: hidden; }
+  .r-inner { padding: 8px 16px 80px; }
+  .r-back { display: inline-flex; align-items: center; min-height: 44px; margin-bottom: 4px; padding: 0; border: 0; background: none; color: var(--ink-2); font-size: 14px; }
+  .r-title { font-size: 23px; }
+  .r-empty { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .reader, body.reading .reader { transition: none; } }
+</style>
+</head>
+<body>
+<a class="skip" href="#list">跳到列表</a>
+<div class="app">
+  <aside class="side">
+    <header class="brand">
+      <h1>X 书签管理器</h1>
+      <p id="stamp">载入中</p>
+    </header>
+    <nav class="nav" id="nav" aria-label="分类"></nav>
+    <section class="xbox" id="xbox" aria-label="X 同步"></section>
+    <button class="theme-toggle" id="theme" type="button">切换深浅色</button>
+  </aside>
+  <section class="listpane" aria-label="收藏列表">
+    <div class="lp-head" id="lphead"></div>
+    <div class="lp-scroll" id="lpscroll"><ol class="list" id="list"></ol><button class="more" id="more" type="button" hidden></button></div>
+    <div class="lp-bar" id="lpbar"></div>
+  </section>
+  <article class="reader" id="reader" aria-label="阅读"></article>
+</div>
+
+<script>
+const CATEGORIES = ['AI 编程与 Agent', 'AI 创作与应用', '开发与开源工具', '加密与 Web3', '投资理财与出入金',
+  '网络与服务器', '副业、创业与个人品牌', '职场与求职', '数码与效率技巧', '健康与生活', '学习与阅读', '娱乐与杂项'];
+const TYPES = ['工具/项目', '教程/方法', '资源合集', '观点/经验', '资讯'];
+const UNSORTED = '未分类'; // synced items waiting for the LLM
+const FLAG = { junk: '垃圾', expired: '过期' };
+const PAGE = 80;
+
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+};
+const $ = (s, el = document) => el.querySelector(s);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const mobile = () => matchMedia('(max-width: 900px)').matches;
+
+let ITEMS = [];
+let BY_ID = new Map();
+const state = { view: 'browse', cat: '', q: '', type: '', min: 1, sort: 'default', tags: [], hide: store.get('hide', true), cseg: '', id: '' };
+let shown = PAGE;
+let sel = new Set(); // ticked rows in the cleanup / bin views
+let headFor = '';    // which view the list header was built for
+
+// An item is a cleanup candidate when the model flagged it, the user has not kept it, and it is not binned.
+const isCand = (it) => it.cleanup !== 'keep' && !it.kept && !it.trashed;
+const inLibrary = (it) => !it.trashed;
+
+// ---------- state <-> URL hash ----------
+function readHash() {
+  const p = new URLSearchParams(location.hash.slice(1));
+  state.view = ['cleanup', 'bin'].includes(p.get('view')) ? p.get('view') : 'browse';
+  state.cat = p.get('cat') || '';
+  state.q = p.get('q') || '';
+  state.type = p.get('type') || '';
+  state.min = +(p.get('min') || 1);
+  state.sort = p.get('sort') || 'default';
+  state.tags = p.getAll('tag');
+  state.id = p.get('id') || '';
+}
+function writeHash(push = false) {
+  const p = new URLSearchParams();
+  if (state.view !== 'browse') p.set('view', state.view);
+  if (state.cat) p.set('cat', state.cat);
+  if (state.q) p.set('q', state.q);
+  if (state.type) p.set('type', state.type);
+  if (state.min > 1) p.set('min', state.min);
+  if (state.sort !== 'default') p.set('sort', state.sort);
+  state.tags.forEach((t) => p.append('tag', t));
+  if (state.id) p.set('id', state.id);
+  const url = p.toString() ? '#' + p : location.pathname;
+  push ? history.pushState(null, '', url) : history.replaceState(null, '', url);
+}
+
+// ---------- search: keywords + semantic (query vector from /api/embed vs. item vectors) ----------
+const SEM_MIN = 0.47; // below this cosine an item only shows up if a keyword matches
+const sem = { vectors: null, dim: 0, q: '', sims: null, failed: false };
+const semReady = () => sem.sims && sem.q === state.q;
+const terms = () => state.q.toLowerCase().split(/\s+/).filter(Boolean);
+
+function unpackVectors(items) {
+  const first = items.find((it) => it.vec);
+  const dim = first ? atob(first.vec).length : 0;
+  const out = new Int8Array(items.length * dim);
+  items.forEach((it, i) => {
+    if (!it.vec) return; // not embedded yet: zero vector, keyword search only
+    const b = atob(it.vec);
+    for (let d = 0, o = i * dim; d < dim; d++) out[o + d] = b.charCodeAt(d);
+  });
+  Object.assign(sem, { vectors: out, dim, sims: null, q: '' });
+}
+function dot(i, v, vScale = 1) {
+  let s = 0;
+  for (let d = 0, o = i * sem.dim; d < sem.dim; d++) s += v[d] * sem.vectors[o + d];
+  return s / vScale;
+}
+async function runSemantic(q) {
+  try {
+    if (!sem.dim) throw new Error('no vectors');
+    const r = await fetch('api/embed?q=' + encodeURIComponent(q));
+    if (!r.ok) throw new Error(r.status);
+    const v = (await r.json()).vector;
+    if (q !== state.q) return; // a newer query superseded this one
+    const n = Math.sqrt(v.reduce((s, x) => s + x * x, 0)) * 127;
+    // Indexed by vector row (it._i), which stays fixed when items are purged from ITEMS.
+    const sims = new Float32Array(sem.vectors.length / sem.dim);
+    for (let i = 0; i < sims.length; i++) sims[i] = dot(i, v, n);
+    Object.assign(sem, { q, sims, failed: false });
+  } catch {
+    if (q === state.q) sem.failed = true;
+  }
+  if (q === state.q && state.view === 'browse') renderList();
+}
+// Nearest neighbours of one item by its own stored vector.
+function related(it, k = 5) {
+  if (!sem.dim || !it._v) return [];
+  const o = it._i * sem.dim;
+  const v = sem.vectors.subarray(o, o + sem.dim);
+  return ITEMS.filter((x) => x !== it && x._v && inLibrary(x))
+    .map((x) => [x, dot(x._i, v)]).sort((a, b) => b[1] - a[1]).slice(0, k).map(([x]) => x);
+}
+const keywordHit = (it) => terms().every((t) => it._hay.includes(t));
+function relevance(it) {
+  // Semantic similarity carries the ranking; literal matches add a boost so exact names still win.
+  const ts = terms();
+  let kw = 0;
+  for (const t of ts) {
+    if (it._head.includes(t)) kw += 0.15;
+    else if (it.summary.toLowerCase().includes(t)) kw += 0.1;
+    else if (it._hay.includes(t)) kw += 0.05;
+  }
+  return (semReady() ? sem.sims[it._i] : 0) + kw / Math.max(1, ts.length) + it.score * 0.008;
+}
+
+// ---------- the current list ----------
+function browseFilter(it, ignoreTags = false) {
+  if (!inLibrary(it)) return false;
+  if (state.cat && it.category !== state.cat) return false;
+  if (state.type && it.type !== state.type) return false;
+  if (it.score < state.min) return false;
+  if (state.hide && isCand(it)) return false;
+  if (!ignoreTags && state.tags.some((t) => !it.tags.includes(t))) return false;
+  if (!state.q) return true;
+  return keywordHit(it) || (semReady() && sem.sims[it._i] >= SEM_MIN);
+}
+function currentList() {
+  if (state.view === 'cleanup') return ITEMS.filter((it) => isCand(it) && (!state.cseg || it.cleanup === state.cseg));
+  if (state.view === 'bin') return ITEMS.filter((it) => it.trashed).sort((a, b) => b.trashed.localeCompare(a.trashed));
+  const list = ITEMS.filter((it) => browseFilter(it));
+  const by = {
+    score: (a, b) => b.score - a.score || a.rank - b.rank,
+    new: (a, b) => b.date.localeCompare(a.date),
+    old: (a, b) => a.date.localeCompare(b.date),
+    default: state.q ? (a, b) => relevance(b) - relevance(a) || a.rank - b.rank : (a, b) => a.rank - b.rank,
+  };
+  return list.sort(by[state.sort] || by.default);
+}
+
+function highlight(text) {
+  let html = esc(text);
+  if (state.view !== 'browse') return html;
+  for (const t of terms()) {
+    const re = new RegExp(esc(t).replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+    html = html.replace(re, (m) => `<mark>${m}</mark>`);
+  }
+  return html;
+}
+
+// ---------- sidebar ----------
+function renderNav() {
+  const visible = (it) => inLibrary(it) && (!state.hide || !isCand(it));
+  const counts = {};
+  ITEMS.filter(visible).forEach((it) => (counts[it.category] = (counts[it.category] || 0) + 1));
+  const cats = counts[UNSORTED] ? [...CATEGORIES, UNSORTED] : CATEGORIES;
+  const btn = (label, n, attrs, current) =>
+    `<button class="nav-item" type="button" ${attrs} aria-current="${current}"><span>${esc(label)}</span><span class="n">${n}</span></button>`;
+  $('#nav').innerHTML =
+    btn('全部', ITEMS.filter(visible).length, 'data-cat=""', state.view === 'browse' && !state.cat) +
+    cats.map((c) => btn(c, counts[c] || 0, `data-cat="${esc(c)}"`, state.view === 'browse' && state.cat === c)).join('') +
+    '<div class="side-label">维护</div>' +
+    btn('待清理', ITEMS.filter(isCand).length, 'data-view="cleanup"', state.view === 'cleanup') +
+    btn('回收站', ITEMS.filter((it) => it.trashed).length, 'data-view="bin"', state.view === 'bin');
+  $('#stamp').textContent = `${ITEMS.filter(inLibrary).length} 条 · ${ITEMS.filter((it) => it.bookmarked).length} 条在 X 收藏中`;
+}
+
+// ---------- list pane ----------
+function headHtml() {
+  if (state.view === 'cleanup') {
+    return `<div class="view-head">
+      <h2>待清理</h2>
+      <p>模型判断已经过期或没有知识价值的收藏。勾选的移到回收站时会同时从 X 取消收藏；想留下的点「保留」，以后不再提示。</p>
+      <div class="acts"><button class="btn" type="button" id="analyze">重新分析</button><span class="note" id="annote"></span></div>
+      <div class="seg" id="cseg"></div>
+    </div><div class="resultline" id="resultline"></div>`;
+  }
+  if (state.view === 'bin') {
+    return `<div class="view-head">
+      <h2>回收站</h2>
+      <p>这里的收藏已从 X 取消，内容还留着。恢复会放回知识库并重新收藏到 X；彻底删除后无法找回。</p>
+    </div><div class="resultline" id="resultline"></div>`;
+  }
+  return `<div class="search">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input type="search" id="q" placeholder="搜索主题或关键词，按 / 聚焦" aria-label="搜索收藏" autocomplete="off">
+    </div>
+    <div class="filters">
+      <label>类型 <select id="type"><option value="">全部</option>${TYPES.map((t) => `<option>${t}</option>`).join('')}</select></label>
+      <label>价值 <select id="min"><option value="1">全部</option><option value="3">3+</option><option value="4">4+</option><option value="5">5</option></select></label>
+      <label>排序 <select id="sort"><option value="default">默认</option><option value="score">价值</option><option value="new">新到旧</option><option value="old">旧到新</option></select></label>
+      <label><input type="checkbox" id="hide"> 隐藏待清理</label>
+    </div>
+    <div class="tagbar" id="tagbar" aria-label="常用标签"></div>
+    <div class="resultline" id="resultline"></div>`;
+}
+
+function rowHtml(it) {
+  const checkable = state.view !== 'browse';
+  const score = '●'.repeat(it.score) + `<span class="off">${'●'.repeat(5 - it.score)}</span>`;
+  const th = it.thumb ? `<span class="th"><img src="${esc(sized(it.thumb, 'thumb'))}" alt="" width="48" height="48" loading="lazy" referrerpolicy="no-referrer">${it.video ? '<span class="v">视频</span>' : ''}</span>` : '';
+  const flag = it.cleanup !== 'keep' && !it.kept && state.view === 'browse' ? `<span class="flag ${it.cleanup}">${FLAG[it.cleanup]}</span>` : '';
+  const states = [it.pending ? '待整理' : '', state.view === 'bin' ? (it.bookmarked ? 'X 上未移除' : '') : (!it.bookmarked && !it.trashed ? '已不在 X 收藏' : '')].filter(Boolean);
+  const why = state.view !== 'browse' && it.reason ? `<span class="why"><span class="flag ${it.cleanup}">${FLAG[it.cleanup] || ''}</span> ${esc(it.reason)}</span>` : '';
+  return `<li class="row" data-id="${it.id}" aria-current="${it.id === state.id}">
+    ${checkable ? `<label class="pick"><input type="checkbox" data-pick="${it.id}" ${sel.has(it.id) ? 'checked' : ''} aria-label="选择：${esc(it.title)}"></label>` : ''}
+    <button class="hit" type="button" data-open="${it.id}">
+      <span><span class="t">${highlight(it.title)}</span><span class="s">${highlight(it.summary || it.body || '')}</span>${why}
+        <span class="m"><span>${esc(it.category)}</span><span>@${esc(it.handle)}</span><span>${it.date}</span>${states.map((s) => `<span class="state">${s}</span>`).join('')}</span></span>
+      <span class="aside"><span class="score" aria-label="价值 ${it.score} 分">${score}</span>${flag}${th}</span>
+    </button>
+  </li>`;
+}
+
+function renderList(resetPage = true) {
+  if (resetPage) shown = PAGE;
+  if (headFor !== state.view) {
+    // Entering a maintenance view: candidates start ticked, the bin starts with nothing ticked.
+    sel = state.view === 'cleanup' ? new Set(currentList().map((it) => it.id)) : new Set();
+    barMsg = '';
+    $('#lphead').innerHTML = headHtml();
+    headFor = state.view;
+    bindHead();
+  }
+  const list = currentList();
+  if (state.view === 'browse') {
+    $('#q').value = state.q;
+    $('#type').value = state.type;
+    $('#min').value = state.min;
+    $('#sort').value = state.sort;
+    $('#hide').checked = state.hide;
+    // Tag suggestions ignore the tag filter so sibling tags stay discoverable.
+    const tc = {};
+    ITEMS.filter((it) => browseFilter(it, true)).forEach((it) => it.tags.forEach((t) => (tc[t] = (tc[t] || 0) + 1)));
+    const top = Object.entries(tc).filter(([, n]) => n > 1).sort((a, b) => b[1] - a[1]).slice(0, 18);
+    $('#tagbar').innerHTML = top.map(([t, n]) =>
+      `<button class="t" type="button" data-tag="${esc(t)}" aria-pressed="${state.tags.includes(t)}">${esc(t)}<span class="n">${n}</span></button>`).join('');
+    const mode = !state.q ? '' : semReady() ? '<span>· 按语义相关度</span>' : sem.failed ? '<span>· 语义搜索不可用，仅关键词</span>' : '<span>· 语义匹配中</span>';
+    $('#resultline').innerHTML = `<span>${esc(state.cat || '全部分类')}</span><strong>${list.length}</strong><span>条</span>${mode}` +
+      state.tags.map((t) => `<button class="active-tag" type="button" data-untag="${esc(t)}" aria-label="移除标签 ${esc(t)}">#${esc(t)} ×</button>`).join('');
+  } else if (state.view === 'cleanup') {
+    const all = ITEMS.filter(isCand);
+    const n = { '': all.length, junk: 0, expired: 0 };
+    all.forEach((it) => n[it.cleanup]++);
+    $('#cseg').innerHTML = [['', '全部'], ['junk', '垃圾'], ['expired', '过期']].map(([k, l]) =>
+      `<button class="chip" type="button" data-cseg="${k}" aria-pressed="${state.cseg === k}">${l} ${n[k]}</button>`).join('');
+    $('#resultline').innerHTML = `<span>${state.cseg ? FLAG[state.cseg] : '全部候选'}</span><strong>${list.length}</strong><span>条</span>`;
+  } else {
+    $('#resultline').innerHTML = `<span>回收站</span><strong>${list.length}</strong><span>条</span>`;
+  }
+  $('#list').innerHTML = list.length ? list.slice(0, shown).map(rowHtml).join('')
+    : `<li class="empty">${state.view === 'cleanup' ? '没有待清理的收藏。可以点「重新分析」按今天的日期再检查一遍。' : state.view === 'bin' ? '回收站是空的。' : '没有符合条件的收藏。换个关键词，或者去掉一些筛选条件。'}</li>`;
+  $('#more').hidden = list.length <= shown;
+  $('#more').textContent = `显示更多（还有 ${list.length - shown} 条）`;
+  renderBar(list);
+}
+
+function renderBar(list = currentList()) {
+  const bar = $('#lpbar');
+  if (state.view === 'browse') { bar.innerHTML = ''; return; }
+  const ids = new Set(list.map((it) => it.id));
+  sel = new Set([...sel].filter((id) => ids.has(id)));
+  const all = list.length > 0 && sel.size === list.length;
+  const acts = state.view === 'cleanup'
+    ? `<button class="btn" type="button" data-act="keep" ${sel.size ? '' : 'disabled'}>保留</button>
+       <button class="btn primary" type="button" data-act="trash" ${sel.size ? '' : 'disabled'}>移到回收站</button>`
+    : `<button class="btn" type="button" data-act="restore" ${sel.size ? '' : 'disabled'}>恢复</button>
+       <button class="btn danger" type="button" data-act="purge" ${sel.size ? '' : 'disabled'}>彻底删除</button>`;
+  bar.innerHTML = `<span>已选 <strong>${sel.size}</strong> 条</span>
+    <button class="btn" type="button" data-act="all" ${list.length ? '' : 'disabled'}>${all ? '全不选' : '全选'}</button><span class="grow"></span>${acts}
+    <span class="msg ${barErr ? 'err' : ''}" role="status">${esc(barMsg)}</span>`;
+}
+let barMsg = '', barErr = false;
+function setBar(msg, err = false) { barMsg = msg; barErr = err; renderBar(); }
+
+function bindHead() {
+  if (state.view === 'browse') {
+    let timer;
+    $('#q').addEventListener('input', (e) => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        state.q = e.target.value.trim(); writeHash(); renderList();
+        if (state.q) runSemantic(state.q);
+      }, 250);
+    });
+    $('#type').addEventListener('change', (e) => { state.type = e.target.value; update(); });
+    $('#min').addEventListener('change', (e) => { state.min = +e.target.value; update(); });
+    $('#sort').addEventListener('change', (e) => { state.sort = e.target.value; update(); });
+    $('#hide').addEventListener('change', (e) => { state.hide = e.target.checked; store.set('hide', state.hide); update(); });
+  }
+  if (state.view === 'cleanup') $('#analyze').addEventListener('click', analyzeAll);
+}
+
+// ---------- reading desk ----------
+// pbs.twimg.com images take a ?name= size; other hosts are used as-is.
+function sized(u, name) {
+  if (!u || !/pbs\.twimg\.com/.test(u) || u.includes('?')) return u;
+  return `${u}?name=${name}`;
+}
+const pretty = (u) => u.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '');
+
+// Escape text and turn URLs and @mentions into links.
+function richText(text) {
+  const re = /(https?:\/\/[^\s<>"'，。、；！？）】]+)|(^|[^\w@/])@(\w{1,15})/g;
+  let out = '', last = 0, m;
+  while ((m = re.exec(text))) {
+    if (m[1]) {
+      const u = m[1].replace(/[.,;:!?)\]]+$/, '');
+      out += esc(text.slice(last, m.index)) + `<a href="${esc(u)}" target="_blank" rel="noopener noreferrer">${esc(pretty(u))}</a>`;
+      last = m.index + u.length;
+      re.lastIndex = last;
+    } else {
+      const at = m.index + m[2].length;
+      out += esc(text.slice(last, at)) + `<a href="https://x.com/${m[3]}" target="_blank" rel="noopener noreferrer">@${esc(m[3])}</a>`;
+      last = at + 1 + m[3].length;
+    }
+  }
+  return out + esc(text.slice(last));
+}
+
+// Links that only point at things rendered below (the quoted post, the article) are dropped from the text.
+function cleanBody(it) {
+  let t = it.body || '';
+  const drop = [];
+  if (it.quote) drop.push(new RegExp(`https?://(?:www\\.)?(?:x|twitter)\\.com/\\w+/status/${it.quote.id}\\S*`, 'g'));
+  if (it.article) drop.push(/https?:\/\/(?:www\.)?(?:x|twitter)\.com\/(?:i\/article|\w+\/article)\/\S+/g);
+  drop.push(new RegExp(`https?://(?:www\\.)?(?:x|twitter)\\.com/\\w+/status/${it.id}/(?:photo|video)/\\d+`, 'g'));
+  for (const re of drop) t = t.replace(re, '');
+  return t.trim();
+}
+
+function mediaHtml(ms, postUrl) {
+  if (!ms?.length) return '';
+  const cells = ms.slice(0, 4).map((m) => m.t === 'photo'
+    ? `<a class="m" href="${esc(m.u.includes('pbs.twimg.com/media/') ? m.u + '?name=orig' : m.u)}" target="_blank" rel="noopener noreferrer"><img src="${esc(sized(m.u, ms.length === 1 ? 'large' : 'medium'))}" alt="" loading="lazy" referrerpolicy="no-referrer"></a>`
+    : `<button class="m" type="button" data-video="${esc(m.v || '')}" data-poster="${esc(m.u)}" data-url="${esc(postUrl)}" data-gif="${m.t === 'gif' ? 1 : ''}"><img src="${esc(sized(m.u, 'medium'))}" alt="" loading="lazy" referrerpolicy="no-referrer"><span class="play">▶ ${m.t === 'gif' ? 'GIF' : '播放视频'}</span></button>`);
+  return `<div class="media n${Math.min(ms.length, 4)}">${cells.join('')}</div>`;
+}
+
+// Draft.js inline links: offsets are UTF-16 indices, which is what JS strings use.
+function inlineLinks(b) {
+  if (!b.l?.length) return esc(b.x);
+  let out = '', last = 0;
+  for (const [off, len, url] of [...b.l].sort((a, c) => a[0] - c[0])) {
+    if (off < last) continue;
+    out += esc(b.x.slice(last, off)) + `<a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${esc(b.x.slice(off, off + len))}</a>`;
+    last = off + len;
+  }
+  return out + esc(b.x.slice(last));
+}
+function articleHtml(a) {
+  let html = '<section class="article">';
+  if (a.cover) html += `<img class="cover" src="${esc(sized(a.cover, 'large'))}" alt="" loading="lazy" referrerpolicy="no-referrer">`;
+  if (a.title) html += `<h2 class="a-title">${esc(a.title)}</h2>`;
+  let list = null;
+  for (const b of a.blocks) {
+    if (b.t === 'ul' || b.t === 'ol') {
+      if (list !== b.t) { if (list) html += `</${list}>`; html += `<${b.t}>`; list = b.t; }
+      html += `<li>${inlineLinks(b)}</li>`;
+      continue;
+    }
+    if (list) { html += `</${list}>`; list = null; }
+    if (b.t === 'h2') html += `<h3>${inlineLinks(b)}</h3>`;
+    else if (b.t === 'h3') html += `<h4>${inlineLinks(b)}</h4>`;
+    else if (b.t === 'quote') html += `<blockquote>${inlineLinks(b)}</blockquote>`;
+    else if (b.t === 'code') html += `<pre>${esc(b.x)}</pre>`;
+    else if (b.t === 'img') html += `<figure><img src="${esc(sized(b.u, 'large'))}" alt="${esc(b.c || '')}" loading="lazy" referrerpolicy="no-referrer">${b.c ? `<figcaption>${esc(b.c)}</figcaption>` : ''}</figure>`;
+    else if (b.t === 'hr') html += '<hr>';
+    else if (b.t === 'post') html += `<p><a href="https://x.com/i/status/${esc(b.id)}" target="_blank" rel="noopener noreferrer">嵌入的帖子 ↗</a></p>`;
+    else html += `<p>${inlineLinks(b)}</p>`;
+  }
+  if (list) html += `</${list}>`;
+  return html + '</section>';
+}
+
+const stars = (n) => (n >= 1000 ? (n / 1000).toFixed(n >= 10000 ? 0 : 1) + 'k' : String(n));
+
+function readerHtml(it) {
+  const score = '●'.repeat(it.score) + `<span class="off">${'●'.repeat(5 - it.score)}</span>`;
+  const cand = isCand(it);
+  const body = cleanBody(it);
+  const q = it.quote;
+  const actions = [
+    `<a class="btn" href="${esc(it.url)}" target="_blank" rel="noopener noreferrer">在 X 打开 ↗</a>`,
+    it.trashed ? '<button class="btn primary" type="button" data-one="restore">恢复</button>'
+      : '<button class="btn" type="button" data-one="trash">移到回收站</button>',
+    cand ? '<button class="btn" type="button" data-one="keep">保留</button>' : '',
+    `<span class="note" id="onenote">${it.trashed ? (it.bookmarked ? '在回收站 · X 上未移除' : '在回收站 · 已从 X 移除') : it.bookmarked ? '' : '已不在 X 收藏'}</span>`,
+  ].join('');
+  const rel = related(it);
+  return `<div class="r-inner">
+    <button class="r-back" type="button" data-back>← 返回列表</button>
+    <header>
+      <p class="r-kicker"><span class="cat">${esc(it.category)}</span><span>${esc(it.type)}</span><span class="score" aria-label="价值 ${it.score} 分">${score}</span><span>№${String(it.no).padStart(3, '0')}</span></p>
+      <h1 class="r-title">${esc(it.title)}</h1>
+      ${it.summary ? `<p class="r-dek">${esc(it.summary)}</p>` : ''}
+      ${it.tags.length ? `<p class="r-tags">${it.tags.map((t) => `<button type="button" data-tag="${esc(t)}">${esc(t)}</button>`).join('')}</p>` : ''}
+      ${it.cleanup !== 'keep' && !it.kept ? `<p class="r-reason"><span class="flag ${it.cleanup}">${FLAG[it.cleanup]}</span> ${esc(it.reason)}</p>` : ''}
+      <div class="r-actions">${actions}</div>
+    </header>
+    <section class="post">
+      <p class="who"><b>${esc(it.name)}</b><span>@${esc(it.handle)} · ${it.date}</span></p>
+      ${body ? `<div class="body">${richText(body)}</div>` : ''}
+      ${mediaHtml(it.media, it.url)}
+      ${q ? `<div class="quote"><p class="who"><b>${esc(q.name)}</b><span>@${esc(q.handle)}</span><a class="open" href="${esc(q.url)}" target="_blank" rel="noopener noreferrer">原帖 ↗</a></p>
+        ${q.body ? `<div class="body">${richText(q.body)}</div>` : ''}${q.articleTitle ? `<p class="body">《${esc(q.articleTitle)}》</p>` : ''}${mediaHtml(q.media, q.url)}</div>` : ''}
+    </section>
+    ${it.article ? articleHtml(it.article) : ''}
+    ${it.thread?.length ? `<div class="thread"><span class="lbl">作者接着写了 ${it.thread.length} 条</span>${it.thread.map((t) => `<div class="item">${richText(t)}</div>`).join('')}</div>` : ''}
+    ${it.repos?.length ? `<div class="cards">${it.repos.map((r) => `<a class="repo" href="${esc(r.url)}" target="_blank" rel="noopener noreferrer"><span class="rn">${esc(r.name)}</span><span class="rs">★ ${stars(r.stars)}</span>${r.desc ? `<span class="rd">${esc(r.desc)}</span>` : ''}</a>`).join('')}</div>` : ''}
+    ${it.links?.length ? `<ul class="links"><li class="lbl">链接</li>${it.links.map((u) => `<li><a href="${esc(u)}" target="_blank" rel="noopener noreferrer">${esc(pretty(u))}</a></li>`).join('')}</ul>` : ''}
+    ${rel.length ? `<section class="related"><span class="lbl">相关收藏</span><ol>${rel.map((x) => `<li><button type="button" data-open="${x.id}"><span class="rt">${esc(x.title)}</span><span class="rc">${esc(x.category)}</span></button></li>`).join('')}</ol></section>` : ''}
+  </div>`;
+}
+
+function renderReader() {
+  const it = BY_ID.get(state.id);
+  const r = $('#reader');
+  if (!it) {
+    r.innerHTML = `<div class="r-empty"><h2>选一条开始阅读</h2>左侧点任意一条，原文、图片、引用和长文章会在这里展开。<br><kbd>↑</kbd> <kbd>↓</kbd> 切换上一条 / 下一条，<kbd>/</kbd> 搜索。</div>`;
+    document.body.classList.remove('reading');
+    return;
+  }
+  r.innerHTML = readerHtml(it);
+  r.scrollTop = 0;
+  document.body.classList.toggle('reading', mobile());
+}
+
+let pushed = false; // the phone reader added a history entry, so "back" should pop it
+function openItem(id, { push = mobile() } = {}) {
+  state.id = id;
+  writeHash(push && !pushed);
+  if (push) pushed = true;
+  renderReader();
+  document.querySelectorAll('.row[aria-current="true"]').forEach((el) => el.setAttribute('aria-current', 'false'));
+  const row = document.querySelector(`.row[data-id="${id}"]`);
+  if (row) { row.setAttribute('aria-current', 'true'); row.scrollIntoView({ block: 'nearest' }); }
+}
+function closeReader() {
+  if (pushed) { pushed = false; history.back(); return; }
+  state.id = ''; writeHash(); renderReader(); renderList(false);
+}
+
+// ---------- bulk actions (20 ids per request; X calls happen server-side) ----------
+async function post(url, body) {
+  const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: body && JSON.stringify(body) });
+  const j = await r.json().catch(() => ({ error: String(r.status) }));
+  if (!r.ok) throw new Error(j.error || r.status);
+  return j;
+}
+const LABEL = { trash: '移到回收站', restore: '恢复', keep: '保留', purge: '彻底删除' };
+let busy = false;
+async function runAction(act, ids, report = setBar) {
+  if (busy || !ids.length) return;
+  if (act === 'trash' && !confirm(`把 ${ids.length} 条移到回收站，并从 X 取消收藏？\n（X API 约 $${(ids.filter((id) => BY_ID.get(id)?.bookmarked).length * 0.005).toFixed(3)}，可随时从回收站恢复）`)) return;
+  if (act === 'purge' && !confirm(`彻底删除 ${ids.length} 条？删除后无法找回。`)) return;
+  if (act === 'restore' && !confirm(`恢复 ${ids.length} 条到知识库，并重新收藏到 X？`)) return;
+  busy = true;
+  const size = act === 'trash' || act === 'restore' ? 20 : 500;
+  let done = 0, failed = 0, stop = '';
+  for (let i = 0; i < ids.length && !stop; i += size) {
+    report(`${LABEL[act]}中 ${done}/${ids.length}`);
+    const chunk = ids.slice(i, i + size);
+    try {
+      const j = await post(`api/${act}`, { ids: chunk });
+      for (const id of chunk) {
+        const it = BY_ID.get(id);
+        if (!it) continue;
+        if (act === 'trash') { it.trashed = it.trashed || new Date().toISOString(); if (j.removed.includes(id)) it.bookmarked = 0; }
+        if (act === 'restore') { it.trashed = null; it.kept = 1; if (j.rebookmarked.includes(id)) it.bookmarked = 1; }
+        if (act === 'keep') it.kept = 1;
+      }
+      if (act === 'purge') { ITEMS = ITEMS.filter((it) => !chunk.includes(it.id) || it.bookmarked); reindex(); }
+      done += chunk.length;
+      failed += (j.failed || []).length + (j.skipped || 0);
+      stop = j.stopped || '';
+    } catch (e) { stop = e.message; }
+  }
+  busy = false;
+  sel.clear();
+  renderNav(); renderList(false); renderReader(); refreshX();
+  // Report after re-rendering so the message lands in the fresh bar / reader.
+  const xNote = act === 'trash' ? '，已从 X 取消' : act === 'restore' ? '，已重新收藏' : '';
+  report(`已${LABEL[act]} ${done} 条${failed ? `（${failed} 条在 X 上未成功${act === 'purge' ? '，因仍在 X 收藏中' : ''}）` : xNote}${stop ? `。已停止：${stop}` : ''}`, Boolean(failed || stop));
+}
+
+// One-click re-analysis: every library item not kept by the user, 25 per request, 3 requests at a time.
+async function analyzeAll() {
+  if (busy) return;
+  if (!xs?.configured.llm) { note('还没有配置模型'); return; }
+  const ids = ITEMS.filter((it) => inLibrary(it) && !it.kept && !it.pending).map((it) => it.id);
+  const before = ITEMS.filter(isCand).length;
+  if (!confirm(`用模型按今天的日期重新判断 ${ids.length} 条收藏是否过期或没有价值，大约需要 ${Math.ceil(ids.length / 25 / 3 * 15 / 60)} 分钟。你标记过「保留」的不会被改动。开始吗？`)) return;
+  busy = true;
+  $('#analyze').disabled = true;
+  const batches = [];
+  for (let i = 0; i < ids.length; i += 25) batches.push(ids.slice(i, i + 25));
+  let doneN = 0, errors = 0;
+  const worker = async () => {
+    while (batches.length) {
+      const b = batches.shift();
+      try { await post('api/analyze', { ids: b }); } catch { errors++; }
+      doneN += b.length;
+      note(`分析中 ${doneN}/${ids.length}`);
+    }
+  };
+  await Promise.all([worker(), worker(), worker()]);
+  await loadLibrary();
+  const after = ITEMS.filter(isCand).length;
+  busy = false;
+  if ($('#analyze')) $('#analyze').disabled = false;
+  sel = new Set(currentList().map((it) => it.id));
+  renderList();
+  note(`分析完成：待清理 ${before} → ${after} 条${errors ? `，${errors} 批失败，可再点一次` : ''}`, errors > 0);
+}
+function note(msg, err = false) { const el = $('#annote'); if (el) { el.textContent = msg; el.classList.toggle('err', err); } }
+
+// ---------- X sync panel ----------
+let xs = null, xbusy = false, xmsg = '', xerr = false;
+const SYNC_EVERY = 12 * 3600e3; // auto-sync on open at most twice a day: each sync costs ~10 reads
+function ago(iso) {
+  const m = Math.round((Date.now() - Date.parse(iso)) / 60000);
+  return m < 1 ? '刚刚' : m < 60 ? `${m} 分钟前` : m < 1440 ? `${Math.round(m / 60)} 小时前` : `${Math.round(m / 1440)} 天前`;
+}
+function setX(msg, err = false) { xmsg = msg; xerr = err; renderX(); }
+function renderX() {
+  const box = $('#xbox');
+  const msg = `<p class="xmsg ${xerr ? 'err' : ''}" role="status">${esc(xmsg)}</p>`;
+  if (!xs) { box.innerHTML = '<p>X 同步状态读取失败</p>' + msg; return; }
+  if (!xs.configured.x) { box.innerHTML = '<p>X API 尚未配置</p>' + msg; return; }
+  if (!xs.connected) { box.innerHTML = `<p>X 账号未连接</p>${msg}<div class="acts"><a class="btn" href="api/x/login">连接 X</a></div>`; return; }
+  const u = xs.usage, c = xs.caps;
+  const bal = xs.balance ? ` · 余额 $${(+xs.balance.total_balance).toFixed(2)}` : '';
+  const nX = ITEMS.filter((it) => it.bookmarked).length;
+  box.innerHTML = `<p class="who">@${esc(xs.user.username)} · ${xs.lastSync ? '同步于 ' + ago(xs.lastSync.at) : '尚未同步'}</p>
+    <p>本月 读 ${u.reads}/${c.reads} · 写 ${u.writes}/${c.writes}${bal}</p>
+    ${xs.pending ? `<p>${xs.pending} 条待整理${xs.configured.llm ? '' : '（未配置模型）'}</p>` : ''}${msg}
+    <div class="acts"><button class="btn" type="button" data-x="sync" ${xbusy ? 'disabled' : ''}>同步</button>
+    <button class="btn" type="button" data-x="full" ${xbusy ? 'disabled' : ''} title="逐条核对整个收藏列表，找出在 X 上直接取消或重新收藏的；约读取 ${nX} 次">全量核对</button></div>`;
+}
+async function refreshX() {
+  try { const r = await fetch('api/x/status'); xs = r.ok ? await r.json() : null; } catch { xs = null; }
+  renderX();
+}
+// Label + embed pending items in small server-side batches until none are left (or the LLM stalls).
+async function processAll() {
+  let changed = false;
+  for (let k = 0; k < 60; k++) {
+    const j = await post('api/x/process');
+    if (!j.processed || (xs?.configured.llm && !j.labelled)) break;
+    changed = true;
+    setX(`整理中，还剩 ${j.remaining} 条`);
+    if (!j.remaining) break;
+  }
+  return changed;
+}
+async function syncX(full = false) {
+  if (xbusy) return;
+  const nX = ITEMS.filter((it) => it.bookmarked).length;
+  if (full && !confirm(`全量核对会逐条读取整个收藏列表，约 ${nX} 次读取（约 $${(nX * 0.001).toFixed(2)}）。继续吗？`)) return;
+  xbusy = true; setX(full ? '全量核对中…' : '同步中…');
+  try {
+    const j = await post('api/x/sync' + (full ? '?full=1' : ''));
+    let msg = j.added ? `新增 ${j.added} 条` : '没有新收藏';
+    if (j.removedOnX) msg += `，${j.removedOnX} 条已在 X 上取消`;
+    if (j.rebookmarked) msg += `，${j.rebookmarked} 条重新收藏`;
+    if (j.spent != null) msg += ` · 花费 $${j.spent}`;
+    setX(j.error ? `${msg} · ${j.error}` : msg, Boolean(j.error));
+    const processed = await processAll();
+    if (j.added || j.removedOnX || j.rebookmarked || processed) await loadLibrary();
+    if (processed) setX(msg + ' · 已整理');
+  } catch (e) { setX('同步失败：' + e.message, true); }
+  xbusy = false;
+  await refreshX();
+}
+
+// ---------- events ----------
+function update() { writeHash(); renderNav(); renderList(); }
+function toggleTag(t) {
+  state.view = 'browse';
+  state.tags = state.tags.includes(t) ? state.tags.filter((x) => x !== t) : [...state.tags, t];
+  update();
+}
+
+$('#nav').addEventListener('click', (e) => {
+  const b = e.target.closest('.nav-item');
+  if (!b) return;
+  state.view = b.dataset.view || 'browse';
+  if (state.view === 'browse') { state.cat = b.dataset.cat; state.tags = []; }
+  update();
+  $('#lpscroll').scrollTop = 0;
+});
+
+$('#lphead').addEventListener('click', (e) => {
+  const tag = e.target.closest('[data-tag]');
+  if (tag) return toggleTag(tag.dataset.tag);
+  const untag = e.target.closest('[data-untag]');
+  if (untag) return toggleTag(untag.dataset.untag);
+  const seg = e.target.closest('[data-cseg]');
+  if (seg) { state.cseg = seg.dataset.cseg; sel = new Set(currentList().map((it) => it.id)); renderList(); }
+});
+
+$('#lpscroll').addEventListener('click', (e) => {
+  if (e.target.id === 'more') { shown += PAGE; renderList(false); return; }
+  const open = e.target.closest('[data-open]');
+  if (open) openItem(open.dataset.open);
+});
+$('#lpscroll').addEventListener('change', (e) => {
+  const id = e.target.dataset.pick;
+  if (!id) return;
+  e.target.checked ? sel.add(id) : sel.delete(id);
+  renderBar();
+});
+
+$('#lpbar').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-act]');
+  if (!b) return;
+  if (b.dataset.act === 'all') {
+    const list = currentList();
+    sel = sel.size === list.length ? new Set() : new Set(list.map((it) => it.id));
+    renderList(false);
+    return;
+  }
+  runAction(b.dataset.act, currentList().map((it) => it.id).filter((id) => sel.has(id)));
+});
+
+$('#reader').addEventListener('click', (e) => {
+  if (e.target.closest('[data-back]')) return closeReader();
+  const open = e.target.closest('[data-open]');
+  if (open) return openItem(open.dataset.open, { push: false });
+  const tag = e.target.closest('[data-tag]');
+  if (tag) { document.body.classList.remove('reading'); return toggleTag(tag.dataset.tag); }
+  const one = e.target.closest('[data-one]');
+  if (one) return runAction(one.dataset.one, [state.id], (msg, err) => { const n = $('#onenote'); if (n) { n.textContent = msg; n.style.color = err ? 'var(--accent)' : ''; } });
+  // Videos load only when asked for: swap the poster for a player in place.
+  const vid = e.target.closest('[data-video]');
+  if (vid) {
+    if (!vid.dataset.video) { window.open(vid.dataset.url, '_blank', 'noopener'); return; }
+    const v = document.createElement('video');
+    Object.assign(v, { src: vid.dataset.video, poster: vid.dataset.poster, controls: !vid.dataset.gif, autoplay: true, playsInline: true, loop: Boolean(vid.dataset.gif), muted: Boolean(vid.dataset.gif) });
+    vid.replaceWith(v);
+  }
+});
+
+$('#xbox').addEventListener('click', (e) => {
+  const b = e.target.closest('[data-x]');
+  if (b) syncX(b.dataset.x === 'full');
+});
+
+// Keyboard: / search, ↑↓ (or j/k) move through the list, Esc closes the reader on phones.
+document.addEventListener('keydown', (e) => {
+  if (/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key === '/' && $('#q')) { e.preventDefault(); $('#q').focus(); return; }
+  if (e.key === 'Escape' && document.body.classList.contains('reading')) { closeReader(); return; }
+  const step = { ArrowDown: 1, j: 1, ArrowUp: -1, k: -1 }[e.key];
+  if (!step) return;
+  const list = currentList();
+  if (!list.length) return;
+  e.preventDefault();
+  const i = list.findIndex((it) => it.id === state.id);
+  const next = list[Math.max(0, Math.min(list.length - 1, i < 0 ? 0 : i + step))];
+  if (list.indexOf(next) >= shown) { shown += PAGE; renderList(false); }
+  openItem(next.id, { push: false });
+});
+
+window.addEventListener('popstate', () => { pushed = false; readHash(); renderNav(); renderList(); renderReader(); });
+window.addEventListener('hashchange', () => { readHash(); headFor = ''; renderNav(); renderList(); renderReader(); if (state.q) runSemantic(state.q); });
+
+const themeKey = 'theme';
+const applyTheme = (t) => (t ? document.documentElement.setAttribute('data-theme', t) : document.documentElement.removeAttribute('data-theme'));
+applyTheme(store.get(themeKey, ''));
+$('#theme').addEventListener('click', () => {
+  const dark = getComputedStyle(document.documentElement).colorScheme.includes('dark');
+  const next = dark ? 'light' : 'dark';
+  store.set(themeKey, next); applyTheme(next);
+});
+
+// ---------- boot ----------
+function reindex() {
+  ITEMS.forEach((it, i) => { it.rank = i; });
+  BY_ID = new Map(ITEMS.map((it) => [it.id, it]));
+}
+async function loadLibrary() {
+  const data = await (await fetch('api/items')).json();
+  unpackVectors(data.items);
+  ITEMS = data.items.map(({ vec, ...it }, i) => {
+    const a = it.article;
+    const searchText = [it.body, it.quote?.body, a?.title, a?.blocks?.map((b) => b.x || '').join(' '), (it.thread || []).join(' '), (it.repos || []).map((r) => r.name + ' ' + r.desc).join(' ')].join(' ');
+    return {
+      ...it,
+      _i: i,
+      _v: Boolean(vec),
+      _head: (it.title + ' ' + it.tags.join(' ')).toLowerCase(),
+      _hay: [it.title, it.summary, it.tags.join(' '), it.handle, it.name, it.category, searchText].join(' ').toLowerCase(),
+    };
+  });
+  reindex();
+  renderNav();
+  renderList(false);
+  renderReader();
+  if (state.q) runSemantic(state.q);
+}
+
+// The OAuth callback lands on #x=<result>.
+if (location.hash.startsWith('#x=')) {
+  const r = decodeURIComponent(location.hash.slice(3));
+  xmsg = r === 'connected' ? '已连接 X' : r;
+  xerr = r !== 'connected';
+  history.replaceState(null, '', location.pathname);
+}
+readHash();
+loadLibrary().then(async () => {
+  // On wide screens the reading desk is never empty: open the first item.
+  if (!state.id && !mobile()) { const first = currentList()[0]; if (first) openItem(first.id); }
+  else document.querySelector(`.row[data-id="${state.id}"]`)?.scrollIntoView({ block: 'center' });
+  await refreshX();
+  if (xs?.connected && (!xs.lastSync || Date.now() - Date.parse(xs.lastSync.at) > SYNC_EVERY)) syncX();
+}).catch(() => {
+  $('#list').innerHTML = '<li class="empty">数据没有载入成功。请刷新页面重试。</li>';
+});
+</script>
+</body>
+</html>

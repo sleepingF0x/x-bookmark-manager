@@ -1,0 +1,14 @@
+# Personal data: bookmarks, raw X responses, images, logs, D1 exports (these contain OAuth tokens)
+data/
+
+# Your Cloudflare resource IDs and local secrets (copy wrangler.example.toml to wrangler.toml)
+wrangler.toml
+.wrangler/
+.dev.vars*
+
+# Tooling
+node_modules/
+__pycache__/
+*.pyc
+.playwright-mcp/
+.DS_Store
