@@ -1,6 +1,6 @@
 // X redirects here after the user approves; trade the code for tokens and remember who connected.
-import { getMeta, putMeta } from '../../../lib/store.js';
-import { exchangeCode, me, redirectUri } from '../../../lib/x.js';
+import { getMeta, putMeta } from '../../lib/store.js';
+import { exchangeCode, me, redirectUri } from '../../lib/x.js';
 
 const back = (request, msg) => Response.redirect(new URL('/#x=' + encodeURIComponent(msg), request.url).href, 302);
 

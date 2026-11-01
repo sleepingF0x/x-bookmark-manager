@@ -1,0 +1,22 @@
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "x-bookmark-manager",
+	"main": "src/worker.js",
+	"compatibility_date": "2026-05-01",
+	// run_worker_first: the password check (src/auth.js) runs before any static file is served.
+	"assets": { "directory": "site", "binding": "ASSETS", "run_worker_first": true },
+	"ai": { "binding": "AI" },
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "x-bookmark-manager",
+			// Placeholder: the Deploy to Cloudflare button creates the database and fills this in.
+			// From the CLI, run `npx wrangler d1 create x-bookmark-manager` and paste the id here.
+			"database_id": "00000000-0000-0000-0000-000000000000",
+			"migrations_dir": "migrations"
+		}
+	],
+	// Keep variables set in the dashboard (e.g. X_MONTHLY_READ_CAP) across deploys.
+	"keep_vars": true,
+	"observability": { "enabled": true }
+}

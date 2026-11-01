@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  cloudflare:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: for f in $(find src scripts -name '*.js' -o -name '*.mjs'); do node --check "$f"; done
+      - name: Bundle the Worker (no deploy)
+        run: npx wrangler deploy --dry-run --outdir dist
+
+  node:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Smoke-test the Node edition
+        env:
+          SITE_PASSWORD: ci
+          DB_PATH: /tmp/ci.db
+          PORT: 8787
+        run: |
+          node src/node.js & sleep 2
+          curl -sf http://127.0.0.1:8787/healthz
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8787/)" = 401
+          curl -sf -u x:ci http://127.0.0.1:8787/ >/dev/null
+          curl -sf -u x:ci http://127.0.0.1:8787/api/items | grep -q '"items"'
+          curl -sf -u x:ci http://127.0.0.1:8787/api/x/status | grep -q '"connected":false'
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t x-bookmark-manager .
+      - name: Smoke-test the image
+        run: |
+          docker run -d --name app -p 8787:8787 -e SITE_PASSWORD=ci x-bookmark-manager
+          for i in $(seq 30); do curl -sf http://127.0.0.1:8787/healthz && break; sleep 1; done
+          curl -sf -u x:ci http://127.0.0.1:8787/api/items | grep -q '"items"' || { docker logs app; exit 1; }

@@ -1,0 +1,6 @@
+*
+!package.json
+!src
+!site
+!migrations
+!scripts/apply-sql.mjs

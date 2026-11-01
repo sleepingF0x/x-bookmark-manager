@@ -5,8 +5,8 @@ Accession numbers follow the export order (rank 0 = newest), so the oldest bookm
 --update-data writes UPDATEs of the item JSON only (keeps X status, bin and vectors) for re-shaping existing rows.
 Usage: python3 -I scripts/seed_d1.py data/raw/<latest export run>
        python3 -I scripts/seed_d1.py --update-data
-       npx wrangler d1 execute x-bookmarks --remote --file db/schema.sql
-       npx wrangler d1 execute x-bookmarks --remote --file data/seed.sql
+       npx wrangler d1 migrations apply DB --remote
+       npx wrangler d1 execute DB --remote --file data/seed.sql
 """
 import base64
 import glob

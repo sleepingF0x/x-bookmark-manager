@@ -1,7 +1,7 @@
 // Permanently delete items from the recycle bin. Body {ids}. Only items already off the X bookmark
 // list are deleted; anything still bookmarked would just come back on the next full sync.
-import { readIds, placeholders } from '../../lib/ids.js';
-import { json } from '../../lib/store.js';
+import { readIds, placeholders } from '../lib/ids.js';
+import { json } from '../lib/store.js';
 
 export async function onRequestPost({ request, env }) {
   const { ids, error } = await readIds(request, 1000);

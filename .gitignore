@@ -1,10 +1,12 @@
 # Personal data: bookmarks, raw X responses, images, logs, D1 exports (these contain OAuth tokens)
 data/
 
-# Your Cloudflare resource IDs and local secrets (copy wrangler.example.toml to wrangler.toml)
-wrangler.toml
+# Local secrets and state (templates: .dev.vars.example, .env.example)
 .wrangler/
-.dev.vars*
+.dev.vars
+.env
+storage/
+dist/
 
 # Tooling
 node_modules/

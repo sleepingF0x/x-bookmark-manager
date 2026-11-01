@@ -1,0 +1,36 @@
+# One-command deploy on a server with automatic HTTPS:
+#
+#   cp .env.example .env   # set DOMAIN (its DNS must point at this server), PUBLIC_URL=https://<DOMAIN>, secrets
+#   docker compose up -d
+#
+# Data lives in ./storage (SQLite). Back it up by copying that folder.
+
+services:
+  app:
+    image: ghcr.io/sleepingf0x/x-bookmark-manager:latest
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./storage:/data
+    expose:
+      - "8787"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on: [app]
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN:?set DOMAIN in .env}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

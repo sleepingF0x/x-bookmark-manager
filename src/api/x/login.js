@@ -1,6 +1,6 @@
 // Start the X OAuth 2.0 authorization (PKCE). The verifier stays server-side in D1.
-import { putMeta } from '../../../lib/store.js';
-import { SCOPES, challenge, randomToken, redirectUri } from '../../../lib/x.js';
+import { putMeta } from '../../lib/store.js';
+import { SCOPES, challenge, randomToken, redirectUri } from '../../lib/x.js';
 
 export async function onRequestGet({ request, env }) {
   if (!env.X_CLIENT_ID || !env.X_CLIENT_SECRET) {

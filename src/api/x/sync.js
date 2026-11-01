@@ -3,9 +3,9 @@
 // first page that contains an item already known as bookmarked, so a routine sync costs about 10 reads.
 // ?full=1 additionally walks the whole list as bare ids (~1 read per bookmark) to find items removed or
 // re-added on X directly; unknown ids found that way are looked up with details.
-import { pageToRows } from '../../../lib/items.js';
-import { BudgetError, acquireLock, getMeta, json, putMeta, releaseLock } from '../../../lib/store.js';
-import { XError, bookmarkIdsPage, bookmarksPage, credits, lookupPosts } from '../../../lib/x.js';
+import { pageToRows } from '../../lib/items.js';
+import { BudgetError, acquireLock, getMeta, json, putMeta, releaseLock } from '../../lib/store.js';
+import { XError, bookmarkIdsPage, bookmarksPage, credits, lookupPosts } from '../../lib/x.js';
 
 const chunk = (a, n) => Array.from({ length: Math.ceil(a.length / n) }, (_, i) => a.slice(i * n, i * n + n));
 

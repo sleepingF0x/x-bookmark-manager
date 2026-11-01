@@ -11,7 +11,7 @@ const CANARY = 5;
 
 const LOG = new URL('../data/unbookmark-log.json', import.meta.url).pathname;
 const dryRun = process.argv.includes('--dry-run');
-const d1 = (sql) => JSON.parse(execFileSync('npx', ['wrangler', 'd1', 'execute', 'x-bookmarks', '--remote', '--json', '--command', sql],
+const d1 = (sql) => JSON.parse(execFileSync('npx', ['wrangler', 'd1', 'execute', 'DB', '--remote', '--json', '--command', sql],
   { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }))[0].results;
 const ids = d1('SELECT id FROM items WHERE trashed_at IS NOT NULL AND bookmarked = 1 ORDER BY no DESC').map((r) => r.id);
 console.log(`${ids.length} items in the recycle bin are still bookmarked on X`);

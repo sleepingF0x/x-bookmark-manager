@@ -1,0 +1,29 @@
+{
+	"name": "x-bookmark-manager",
+	"version": "1.0.0",
+	"description": "Turn your X (Twitter) bookmarks into a private, searchable knowledge base with two-way sync — Cloudflare Workers or Docker",
+	"license": "MIT",
+	"type": "module",
+	"private": true,
+	"repository": { "type": "git", "url": "git+https://github.com/sleepingF0x/x-bookmark-manager.git" },
+	"engines": { "node": ">=22.13" },
+	"scripts": {
+		"start": "node src/node.js",
+		"dev": "wrangler d1 migrations apply DB --local && wrangler dev",
+		"deploy": "wrangler d1 migrations apply DB --remote && wrangler deploy",
+		"check": "wrangler deploy --dry-run --outdir dist"
+	},
+	"devDependencies": {
+		"wrangler": "^4.94.0"
+	},
+	"cloudflare": {
+		"bindings": {
+			"SITE_PASSWORD": { "description": "网站访问密码（用户名任意）。Password for the site; any username works." },
+			"X_CLIENT_ID": { "description": "X 开发者后台 App 的 OAuth 2.0 Client ID（[console.x.com](https://console.x.com)）。" },
+			"X_CLIENT_SECRET": { "description": "X App 的 OAuth 2.0 Client Secret。" },
+			"LLM_BASE_URL": { "description": "模型接口地址：OpenAI 兼容填到 `/v1`（如 `https://api.openai.com/v1`），Anthropic 兼容填根地址。" },
+			"LLM_API_KEY": { "description": "模型接口的 API key。" },
+			"LLM_MODEL": { "description": "模型名，例如 `gpt-5-mini`、`deepseek-v4-pro`。" }
+		}
+	}
+}

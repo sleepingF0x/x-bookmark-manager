@@ -1,7 +1,7 @@
 // Mark cleanup candidates as "keep": they leave the cleanup list and analysis skips them from now on.
 // Body {ids, kept?: false} (false clears the mark).
-import { readIds, placeholders } from '../../lib/ids.js';
-import { json } from '../../lib/store.js';
+import { readIds, placeholders } from '../lib/ids.js';
+import { json } from '../lib/store.js';
 
 export async function onRequestPost({ request, env }) {
   const { ids, body, error } = await readIds(request, 1000);

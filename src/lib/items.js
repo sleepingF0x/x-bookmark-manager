@@ -2,7 +2,7 @@
 // Mirrors scripts/digest.py + scripts/build_site.py so synced items look like the seeded ones.
 import { classify, llmConfigured } from './llm.js';
 
-const EMBED_MODEL = '@cf/baai/bge-m3'; // must match scripts/embed.py and functions/api/embed.js
+const EMBED_MODEL = '@cf/baai/bge-m3'; // must match scripts/embed.py and src/api/embed.js
 
 const refs = (p) => p.referenced_posts || p.referenced_tweets || [];
 

@@ -1,9 +1,9 @@
 // Move items to the recycle bin and remove them from X bookmarks ($0.005 each). Body {ids} (<= 20).
 // The bin entry is written first, so an X failure leaves the item in the bin marked "still on X"
 // and calling this again retries the X removal.
-import { readIds, placeholders } from '../../lib/ids.js';
-import { BudgetError, getMeta, json } from '../../lib/store.js';
-import { XError, removeBookmark } from '../../lib/x.js';
+import { readIds, placeholders } from '../lib/ids.js';
+import { BudgetError, getMeta, json } from '../lib/store.js';
+import { XError, removeBookmark } from '../lib/x.js';
 
 export async function onRequestPost({ request, env }) {
   const { ids, error } = await readIds(request, 20);

@@ -1,8 +1,8 @@
 // Take items out of the recycle bin: they return to the library, are marked "keep" so analysis won't
 // flag them again, and are bookmarked on X again if they had been removed there. Body {ids} (<= 20).
-import { readIds, placeholders } from '../../lib/ids.js';
-import { BudgetError, getMeta, json } from '../../lib/store.js';
-import { XError, addBookmark } from '../../lib/x.js';
+import { readIds, placeholders } from '../lib/ids.js';
+import { BudgetError, getMeta, json } from '../lib/store.js';
+import { XError, addBookmark } from '../lib/x.js';
 
 export async function onRequestPost({ request, env }) {
   const { ids, error } = await readIds(request, 20);

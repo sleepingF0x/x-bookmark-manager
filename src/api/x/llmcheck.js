@@ -1,6 +1,6 @@
 // Diagnostic: one tiny round trip to the configured LLM, so a bad URL/key/model shows up before a sync needs it.
 // ?models=1 lists the model ids the endpoint offers (OpenAI-style GET /models).
-import { chat, classify, llmConfigured } from '../../../lib/llm.js';
+import { chat, classify, llmConfigured } from '../../lib/llm.js';
 
 // ?compare=N re-labels N random already-labelled items and returns old vs new labels side by side,
 // to judge whether the configured model labels like the one that built the library.

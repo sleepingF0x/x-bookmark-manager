@@ -1,7 +1,7 @@
 // Connection, sync and spend overview for the site's sidebar. The X balance is cached for an hour.
-import { caps, getMeta, putMeta, usage } from '../../../lib/store.js';
-import { credits } from '../../../lib/x.js';
-import { llmConfigured } from '../../../lib/llm.js';
+import { caps, getMeta, putMeta, usage } from '../../lib/store.js';
+import { credits } from '../../lib/x.js';
+import { llmConfigured } from '../../lib/llm.js';
 
 export async function onRequestGet({ env }) {
   const [user, token, lastSync, u, pending] = await Promise.all([

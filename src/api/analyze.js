@@ -1,8 +1,8 @@
 // One batch of the "re-analyse" pass: re-judge cleanup (keep/expired/junk) for up to 25 library items
 // against today's date with the user's LLM. Items in the bin or marked keep are left alone.
-import { readIds, placeholders } from '../../lib/ids.js';
-import { analyzeCleanup, llmConfigured } from '../../lib/llm.js';
-import { json } from '../../lib/store.js';
+import { readIds, placeholders } from '../lib/ids.js';
+import { analyzeCleanup, llmConfigured } from '../lib/llm.js';
+import { json } from '../lib/store.js';
 
 export async function onRequestPost({ request, env }) {
   if (!llmConfigured(env)) return json({ error: '未配置模型' }, 409);

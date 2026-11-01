@@ -2,7 +2,7 @@
 
 把 X（Twitter）收藏整理成一个私人知识库：自动分类、打标签、写摘要，支持关键词 + 语义搜索，按原样阅读推文和长文章，并通过 X 官方 API 与收藏夹双向同步——新收藏自动入库，在网站上清理的条目同步从 X 取消收藏，回收站可恢复。
 
-跑在 Cloudflare 上（Pages + Functions + D1 + Workers AI），整站 Basic Auth 密码保护；分类与清理判断用你自己的 OpenAI / Anthropic 兼容模型接口。
+可以一键部署到 Cloudflare Workers（D1 + Workers AI），也可以用 Docker 跑在自己的服务器或电脑上；整站 Basic Auth 密码保护；分类与清理判断用你自己的 OpenAI / Anthropic 兼容模型接口。
 
 ## 功能
 
@@ -14,109 +14,117 @@
 
 ## 怎么开始
 
-每个人部署自己的一份：自己的 Cloudflare、自己的 X 开发者 App、自己的模型接口，数据只在自己的账号里。你需要准备：
+每个人部署自己的一份：自己的服务器或 Cloudflare 账号、自己的 X 开发者 App、自己的模型接口，数据只在自己手里。
+
+**先准备好这几样：**
 
 | 准备 | 说明 | 费用 |
 |---|---|---|
-| Cloudflare 账号 | Pages、D1、Workers AI | 个人用量在免费额度内 |
-| X 开发者账号 + 一个 App | [console.x.com](https://console.x.com)，充值一次按量额度（首次充值另送额度） | 读收藏 $0.001/条，日常约每月 $0.3 |
-| 模型接口 | 任意 OpenAI 或 Anthropic 兼容接口（DeepSeek、OpenRouter、官方 API 等） | 取决于你的接口，量很小 |
-| Node.js 22+ | 部署用 | — |
+| X 开发者 App | [console.x.com](https://console.x.com) 创建 App，充值一次按量额度（首次充值另送额度） | 读收藏 $0.001/条，日常约每月 $0.3 |
+| 模型接口 | 任意 OpenAI 或 Anthropic 兼容接口（DeepSeek、OpenRouter、官方 API 等），用于分类和清理判断 | 取决于你的接口，量很小 |
+| Cloudflare 账号 | 方式一托管整个应用；方式二、三只用它的 Workers AI 生成搜索向量 | 个人用量在免费额度内 |
 
-然后二选一导入已有收藏：
+**再选一种部署方式：**
 
-- **只用网站（推荐给大多数人，任何系统都行）**：按下面「部署」做完，打开网站点「连接 X」。数据库是空的，第一次同步会从最新往前把收藏一页页全部拉进来，再分批用你的模型整理。
-  - 首次导入前把 `X_MONTHLY_READ_CAP` 临时调到收藏数的 3 倍左右（计数包含作者和被引用的帖子），否则默认的 1500 会在七八百条处停下；导完再改回来。
-  - 一次同步最多翻约 2700 条；收藏更多时，之后点一次「全量核对」补齐剩下的。
-  - 每次同步最多整理 600 条，剩下的显示为「待整理」，再点一次「同步」继续。
-  - 这条路径的代码与日常增量同步相同，但还没有在上千条的新库上完整跑过；遇到问题欢迎提 issue。
-- **本地流水线（macOS + Chrome）**：内容更完整（长文章全文、作者线程、图片文字辅助分类、GitHub 仓库信息），见下方「首次导入已有收藏」。
+| | 方式一：Cloudflare Workers | 方式二：Docker + 自己的服务器 | 方式三：Docker 在自己电脑上 |
+|---|---|---|---|
+| 适合 | 大多数人 | 想把数据放在自己的服务器上 | 只在一台电脑上用 |
+| 需要 | 只要 Cloudflare 账号 | 一台开放 80/443 的服务器 + 一个域名 | 装好 Docker |
+| HTTPS | 自带 `*.workers.dev` | Caddy 自动申请证书 | 不需要（X 允许 `http://127.0.0.1` 回调） |
+| 数据存在 | Cloudflare D1 | 服务器上的 SQLite 文件 | 本机的 SQLite 文件 |
+| 费用 | 免费额度内 | 服务器费用 | 无 |
 
-## 架构
-
-```
-浏览器 (site/index.html)
-   │  Basic Auth (functions/_middleware.js)
-   ▼
-Cloudflare Pages Functions (functions/, lib/)
-   ├─ D1          items：每条收藏一行（结构化内容 JSON + 向量 + X 状态 + 回收站）
-   │              meta ：OAuth token、同步记录、月度用量
-   ├─ Workers AI  @cf/baai/bge-m3 向量（入库与搜索词）
-   ├─ X API v2    OAuth 2.0 PKCE；读收藏、取消/恢复收藏
-   └─ 你的 LLM     新收藏分类、清理判断
-
-本地流水线 (scripts/)：首次把已有收藏完整导入（浏览器导出 + 长文章/线程补全 + OCR + GitHub 信息 + 分类）
-```
-
-## 目录结构
-
-```
-site/index.html            前端单页（无构建步骤）
-functions/
-  _middleware.js           整站 Basic Auth，密码取自 SITE_PASSWORD；未设置时一律拒绝
-  api/items.js             整个库（含向量）
-  api/embed.js             搜索词向量
-  api/trash.js restore.js  回收站：移入（并从 X 取消收藏）/ 恢复（并重新收藏）
-  api/purge.js keep.js     彻底删除 / 标记保留
-  api/analyze.js           重新分析一批（清理判断）
-  api/x/login.js callback.js   X OAuth
-  api/x/sync.js            增量同步 / 全量核对
-  api/x/process.js         为新条目分类 + 生成向量
-  api/x/status.js          连接、用量、余额
-  api/x/llmcheck.js        模型诊断：连通性、?models=1 列模型、?compare=N 与现有标签对比
-lib/
-  x.js                     X API 客户端（OAuth、token 刷新、字段命名兼容）
-  items.js                 API 返回 → 库条目；分类与向量化
-  llm.js                   模型调用（OpenAI / Anthropic 格式）与提示词
-  store.js                 D1 辅助、锁、月度预算
-  ids.js                   批量请求参数校验
-db/schema.sql              D1 表结构；db/migrations/ 是对已有库的增量变更
-scripts/                   本地导入流水线（见下）
-wrangler.example.toml      复制为 wrangler.toml 并填入你的 D1 id
-data/                      你的个人数据（不入库，见 .gitignore）
-```
+部署好后打开网站，点左下角「连接 X」，第一次同步会把整个收藏导进来（见下方「导入已有收藏」）。
 
 ## 部署
 
-需要：Node.js 22+（脚本用到内置 WebSocket）、Python 3.10+、Cloudflare 账号、X 开发者账号（按量付费额度）、一个 OpenAI 或 Anthropic 兼容的模型接口。
+### X App 设置（三种方式都要）
 
-```bash
-# 1. Cloudflare 资源
-git clone https://github.com/sleepingF0x/x-bookmark-manager.git && cd x-bookmark-manager
-npx wrangler login
-npx wrangler d1 create x-bookmarks          # 记下 database_id
-cp wrangler.example.toml wrangler.toml      # 填入 database_id
-npx wrangler d1 execute x-bookmarks --remote --file db/schema.sql
-npx wrangler pages project create x-bookmarks --production-branch main
+在 [console.x.com](https://console.x.com) → 你的 App → User authentication settings：
 
-# 2. 首次部署，得到 https://<项目>.pages.dev
-npx wrangler pages deploy
-```
-
-**3. 配置 secrets**：在 Cloudflare 后台 Workers & Pages → 项目 → Settings → Variables and Secrets（Production，类型选 Secret），或用 `npx wrangler pages secret put <名字> --project-name x-bookmarks`。改完需要重新部署才生效。
-
-| 名字 | 内容 |
-|---|---|
-| `SITE_PASSWORD` | 网站密码（用户名任意） |
-| `X_CLIENT_ID` / `X_CLIENT_SECRET` | X 开发者后台 App 的 OAuth 2.0 Client ID / Secret |
-| `LLM_BASE_URL` | OpenAI 兼容填到 `/v1`（如 `https://api.openai.com/v1`）；Anthropic 兼容填根地址（如 `https://api.anthropic.com`） |
-| `LLM_API_KEY` / `LLM_MODEL` | 模型接口的 key 与模型名（`/api/x/llmcheck?models=1` 可列出可用模型） |
-| `LLM_FORMAT` | 可选，`openai` 或 `anthropic`；不填时 URL 含 anthropic 即按 Anthropic 格式 |
-| `X_MONTHLY_READ_CAP` / `X_MONTHLY_WRITE_CAP` | 可选，月度上限，默认 1500 / 200 |
-
-**4. X App 设置**（[console.x.com](https://console.x.com) → 你的 App → User authentication settings）：
-- App permissions：Read and write
-- Type of App：Web App, Automated App or Bot
-- Callback URI：`https://<项目>.pages.dev/api/x/callback`（必须一字不差）
+- App permissions：**Read and write**
+- Type of App：**Web App, Automated App or Bot**
+- Callback URI：`<你的网站地址>/api/x/callback`，必须一字不差（网站地址见各方式）
 - Website URL：任意，比如你的 GitHub 主页
 
-**5.** 重新部署，打开网站，点左下角「连接 X」授权。授权页的「我信任此应用」勾不上时，多半是广告拦截类插件拦了 X 的脚本，临时关掉即可（授权只需一次）。
+保存后在 Keys and tokens 页拿到 OAuth 2.0 的 **Client ID** 和 **Client Secret**。
 
-## 首次导入已有收藏（本地流水线）
+### 方式一：Cloudflare Workers（推荐）
 
-比网站同步导入的内容更完整（X 长文章全文、作者线程、图片 OCR 辅助分类、GitHub 仓库信息），适合收藏多、在意长文章的情况。
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/sleepingF0x/x-bookmark-manager)
 
-前提：macOS + Chrome（浏览器脚本从 `~/Library/Application Support/Google/Chrome/DevToolsActivePort` 找调试端口，OCR 用 macOS Vision）。在你日常使用、已登录 X 的 Chrome 里打开 `chrome://inspect/#remote-debugging` 开启远程调试；脚本每次连接时 Chrome 会弹窗确认。脚本只在新窗口里浏览，不碰你已打开的标签页。
+1. 点上面的按钮，登录 Cloudflare。它会把仓库复制到你的 GitHub、自动创建 D1 数据库，并让你填写：网站密码、X 的 Client ID / Secret、模型接口（`LLM_BASE_URL`、`LLM_API_KEY`、`LLM_MODEL`）。
+2. 部署完成后得到 `https://x-bookmark-manager.<你的子域>.workers.dev`，把 `这个地址/api/x/callback` 填回 X App 的 Callback URI。
+3. 打开网站，用你设的密码登录（用户名任意），点「连接 X」。
+
+也可以用命令行部署：
+
+```bash
+git clone https://github.com/sleepingF0x/x-bookmark-manager.git && cd x-bookmark-manager
+npm install
+npx wrangler login
+npx wrangler d1 create x-bookmark-manager      # 把输出的 database_id 填进 wrangler.jsonc
+npm run deploy                                 # 建表（D1 migrations）+ 部署
+for s in SITE_PASSWORD X_CLIENT_ID X_CLIENT_SECRET LLM_BASE_URL LLM_API_KEY LLM_MODEL; do npx wrangler secret put $s; done
+```
+
+之后改配置：Cloudflare 后台 Workers & Pages → x-bookmark-manager → Settings → Variables and Secrets。
+
+### 方式二：Docker + 自己的服务器（自动 HTTPS）
+
+需要一台开放了 80/443 端口的服务器，并把一个域名解析到它。
+
+```bash
+git clone https://github.com/sleepingF0x/x-bookmark-manager.git && cd x-bookmark-manager
+cp .env.example .env     # 填 DOMAIN、PUBLIC_URL=https://<DOMAIN>、密码、X、模型、Cloudflare Workers AI
+docker compose up -d
+```
+
+[Caddy](https://caddyserver.com) 自动申请并续期证书，网站地址就是 `https://<DOMAIN>`。数据在 `./storage/x-bookmarks.db`，备份复制这个目录即可。
+
+### 方式三：Docker 在自己电脑上
+
+```bash
+cp .env.example .env     # 保持 PUBLIC_URL=http://127.0.0.1:8787，填密码、X、模型、Cloudflare Workers AI
+docker run -d --name x-bookmark-manager --restart unless-stopped \
+  -p 127.0.0.1:8787:8787 --env-file .env -v "$PWD/storage:/data" \
+  ghcr.io/sleepingf0x/x-bookmark-manager:latest
+```
+
+网站地址 `http://127.0.0.1:8787`，X App 的 Callback URI 填 `http://127.0.0.1:8787/api/x/callback`。不用 Docker 也行：Node.js 22.13+ 下 `npm start`（读取同样的环境变量）。
+
+### 配置项
+
+| 名字 | 说明 |
+|---|---|
+| `SITE_PASSWORD` | 网站密码（用户名任意）。未设置时一律拒绝访问 |
+| `X_CLIENT_ID` / `X_CLIENT_SECRET` | X App 的 OAuth 2.0 Client ID / Secret |
+| `LLM_BASE_URL` | OpenAI 兼容填到 `/v1`（如 `https://api.openai.com/v1`）；Anthropic 兼容填根地址（如 `https://api.anthropic.com`） |
+| `LLM_API_KEY` / `LLM_MODEL` | 模型接口的 key 与模型名；部署后访问 `/api/x/llmcheck?models=1` 可列出可用模型 |
+| `LLM_FORMAT` | 可选，`openai` 或 `anthropic`；不填时 URL 含 anthropic 即按 Anthropic 格式 |
+| `X_MONTHLY_READ_CAP` / `X_MONTHLY_WRITE_CAP` | 可选，X API 月度上限，默认 1500 / 200 |
+| `PUBLIC_URL` | 仅 Docker：网站的公开地址，用来生成 X 回调地址 |
+| `DOMAIN` | 仅 docker-compose：Caddy 申请证书的域名 |
+| `CLOUDFLARE_ACCOUNT_ID` / `CLOUDFLARE_API_TOKEN` | 仅 Docker：调用 Workers AI 生成搜索向量（`@cf/baai/bge-m3`，与 Cloudflare 版同一模型）。Token 需要 Workers AI 读权限 |
+| `DB_PATH` / `PORT` | 仅 Docker / Node：数据库文件路径（镜像内默认 `/data/x-bookmarks.db`）与端口（默认 8787） |
+
+### 连接 X 时的常见问题
+
+- 授权页提示「你无法获得该应用的访问权限」：多半是 Callback URI 和网站地址不一致（`https`、末尾斜杠、域名拼写）。
+- 授权页的「我信任此应用」勾不上：广告拦截或隐私类浏览器插件拦了 X 的脚本，临时关掉即可。授权只需一次，之后的同步都在服务端完成。
+
+## 导入已有收藏
+
+**方法 A：直接用网站同步（任何系统）**。数据库为空时，第一次同步会从最新往前把收藏一页页全部拉进来，再分批用你的模型整理。
+
+- 首次导入前把 `X_MONTHLY_READ_CAP` 临时调到收藏数的 3 倍左右（计数包含作者和被引用的帖子），否则默认的 1500 会在七八百条处停下；导完再改回来。
+- 一次同步最多翻约 2700 条；收藏更多时，之后点一次「全量核对」补齐剩下的。
+- 每次同步最多整理 600 条，剩下的显示为「待整理」，再点一次「同步」继续。
+- 这条路径的代码与日常增量同步相同，但还没有在上千条的新库上完整跑过；遇到问题欢迎提 issue。
+
+**方法 B：本地流水线（macOS + Chrome）**。比网站同步导入的内容更完整（X 长文章全文、作者线程、图片 OCR 辅助分类、GitHub 仓库信息），适合收藏多、在意长文章的情况。
+
+前提：Node.js 22+、Python 3.10+、macOS + Chrome（浏览器脚本从 `~/Library/Application Support/Google/Chrome/DevToolsActivePort` 找调试端口，OCR 用 macOS Vision）。在你日常使用、已登录 X 的 Chrome 里打开 `chrome://inspect/#remote-debugging` 开启远程调试；脚本每次连接时 Chrome 会弹窗确认。脚本只在新窗口里浏览，不碰你已打开的标签页。
 
 ```bash
 # 导出：滚动收藏页，保存 X 返回的原始数据
@@ -132,11 +140,14 @@ python3 -I scripts/enrich_offline.py                       # 需要已登录的 
 python3 -I scripts/digest.py 1200
 python3 -I scripts/classify.py
 
-# 生成并写入 D1
+# 生成数据
 python3 -I scripts/build_site.py                           # -> data/items.json
 CLOUDFLARE_ACCOUNT_ID=<id> python3 -I scripts/embed.py     # -> data/vectors.bin
 python3 -I scripts/seed_d1.py data/raw/<时间戳>             # -> data/seed.sql
-npx wrangler d1 execute x-bookmarks --remote --file data/seed.sql
+
+# 写入数据库（按你的部署方式选一条）
+npx wrangler d1 execute DB --remote --file data/seed.sql                # Cloudflare
+node scripts/apply-sql.mjs storage/x-bookmarks.db data/seed.sql        # Docker（在 docker compose 目录下）
 ```
 
 注意 X 会对短时间内大量打开页面限流（经验上一小时几百个页面后开始拿不到数据），`capture-details` 和导出都别连续跑太多次。
@@ -151,7 +162,7 @@ npx wrangler d1 execute x-bookmarks --remote --file data/seed.sql
 - **恢复**：回到知识库、标为保留，并重新收藏到 X（会出现在 X 收藏列表最前面；原帖已删除时只恢复到知识库）。
 - **彻底删除**：从数据库删除，只对已不在 X 收藏里的条目生效，无法找回。
 
-API 不可用时的备用方案：`node scripts/unbookmark.mjs` 在你的 Chrome 里逐条点掉「在回收站但仍在 X 收藏中」的条目，完成后回写 D1。前 5 条是试运行，出现异常结果立即停止；`--dry-run` 只定位按钮、不点击。
+API 不可用时的备用方案（Cloudflare 版）：`node scripts/unbookmark.mjs` 在你的 Chrome 里逐条点掉「在回收站但仍在 X 收藏中」的条目，完成后回写 D1。前 5 条是试运行，出现异常结果立即停止；`--dry-run` 只定位按钮、不点击。
 
 ## 费用
 
@@ -164,22 +175,64 @@ X API 是预充值、按量扣费，**不开 auto-recharge 就不会自动扣卡
 | 移到回收站 / 恢复 | 每条 $0.005 |
 | 日常使用（每月几十条新收藏） | 每月 $0.3 左右 |
 
-Cloudflare 部分在免费额度内；模型调用走你自己的接口。代码里的月度上限到了就拒绝调用 X API，和 X 后台的消费上限互相独立，建议两边都设。
+Cloudflare（Workers、D1、Workers AI）在免费额度内；模型调用走你自己的接口。代码里的月度上限到了就拒绝调用 X API，和 X 后台的消费上限互相独立，建议两边都设。
+
+## 架构
+
+```
+浏览器 (site/index.html)
+   │  Basic Auth（src/auth.js，静态文件也在密码之后）
+   ▼
+src/app.js  路由 + 全部 API（两个版本共用）
+   ├─ src/worker.js  Cloudflare 入口：D1、Workers AI binding、静态资源
+   └─ src/node.js    Docker / Node 入口：SQLite（src/node/d1.js，兼容 D1 接口）、Workers AI REST（src/node/ai.js）
+         │
+         ├─ 数据库   items：每条收藏一行（结构化内容 JSON + 向量 + X 状态 + 回收站）
+         │          meta ：OAuth token、同步记录、月度用量
+         ├─ Workers AI  @cf/baai/bge-m3 向量（入库与搜索词）
+         ├─ X API v2    OAuth 2.0 PKCE；读收藏、取消/恢复收藏
+         └─ 你的 LLM     新收藏分类、清理判断
+
+scripts/  本地导入流水线（浏览器导出 + 长文章/线程补全 + OCR + GitHub 信息 + 分类）
+```
+
+## 目录结构
+
+```
+site/index.html              前端单页（无构建步骤）
+src/
+  app.js                     路由；auth.js 整站 Basic Auth
+  worker.js                  Cloudflare Workers 入口
+  node.js                    Node / Docker 入口；node/d1.js、node/ai.js 是 D1 与 Workers AI 的替身
+  api/items.js embed.js      整个库（含向量）/ 搜索词向量
+  api/trash.js restore.js    回收站：移入（并从 X 取消收藏）/ 恢复（并重新收藏）
+  api/purge.js keep.js       彻底删除 / 标记保留
+  api/analyze.js             重新分析一批（清理判断）
+  api/x/login.js callback.js X OAuth
+  api/x/sync.js process.js   同步 / 为新条目分类 + 生成向量
+  api/x/status.js llmcheck.js  连接与用量 / 模型诊断（?models=1 列模型，?compare=N 与现有标签对比）
+  lib/                       X API 客户端、条目转换、模型调用与提示词、存储与月度预算
+migrations/                  数据库表结构（D1 migrations；Node 版启动时自动执行）
+scripts/                     本地导入流水线；apply-sql.mjs 把 SQL 导入 Docker 版数据库
+wrangler.jsonc  package.json Cloudflare 配置（database_id 是占位符，部署按钮会自动替换）
+Dockerfile  docker-compose.yml  deploy/Caddyfile  .env.example   Docker 部署
+.github/workflows/           CI（两个版本的冒烟测试）与镜像发布（ghcr.io）
+```
 
 ## 本地开发
 
 ```bash
-printf 'SITE_PASSWORD=dev\n' > .dev.vars                     # 可再加 LLM_* / X_* 用于本地调试
-npx wrangler d1 execute x-bookmarks --local --file db/schema.sql
-npx wrangler d1 execute x-bookmarks --local --file data/seed.sql
-npx wrangler pages dev --port 8788                           # http://localhost:8788，Workers AI 走远程
+npm install
+cp .dev.vars.example .dev.vars        # 至少填 SITE_PASSWORD
+npm run dev                           # Cloudflare 版：http://localhost:8787（本地 D1，Workers AI 走远程）
+SITE_PASSWORD=dev npm start           # Node 版：http://localhost:8787（storage/x-bookmarks.db）
 ```
 
 ## 安全
 
-- 所有凭据（网站密码、X Client Secret、模型 key）只存为 Cloudflare 加密 secret，不写进代码或仓库。X 的 OAuth token 存在你自己的 D1 里。
+- 所有凭据（网站密码、X Client Secret、模型 key）只放在 Cloudflare 加密 secret 或你自己的 `.env` 里，不写进代码或仓库。X 的 OAuth token 存在你自己的数据库里。
 - 整站（包括静态文件和全部 API）都在 Basic Auth 之后；`SITE_PASSWORD` 未设置时一律返回 401。
-- `data/` 是你的个人数据（收藏原文、图片、日志、数据库导出），已在 `.gitignore` 中排除。**数据库导出文件包含 OAuth token，不要分享。**
+- `data/`（本地流水线的个人数据）、`storage/`（Docker 版数据库）、`.env`、`.dev.vars` 都在 `.gitignore` 中。**数据库文件和导出包含 OAuth token，不要分享。**
 
 ## 已知限制
 
