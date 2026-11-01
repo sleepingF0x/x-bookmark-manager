@@ -20,7 +20,7 @@
 
 | 准备 | 说明 | 费用 |
 |---|---|---|
-| X 开发者 App | [console.x.com](https://console.x.com) 创建 App，充值一次按量额度（首次充值另送额度） | 读收藏 $0.001/条，日常约每月 $0.3 |
+| X 开发者 App | [console.x.com](https://console.x.com) 创建 App，预充值少量按量额度（部分账号会附赠额度，以后台显示为准） | 读收藏 $0.001/条，日常约每月 $0.3 |
 | 模型接口 | 任意 OpenAI 或 Anthropic 兼容接口（DeepSeek、OpenRouter、官方 API 等），用于分类和清理判断 | 取决于你的接口，量很小 |
 | Cloudflare 账号 | 方式一托管整个应用；方式二、三只用它的 Workers AI 生成搜索向量 | 个人用量在免费额度内 |
 
@@ -34,7 +34,16 @@
 | 数据存在 | Cloudflare D1 | 服务器上的 SQLite 文件 | 本机的 SQLite 文件 |
 | 费用 | 免费额度内 | 服务器费用 | 无 |
 
-部署好后打开网站，点左下角「连接 X」，第一次同步会把整个收藏导进来（见下方「导入已有收藏」）。
+### 新手 6 步（以方式一为例，约 20–30 分钟）
+
+1. **准备账号**：GitHub（部署按钮会把仓库复制到你名下）、Cloudflare（免费版即可）、X 开发者账号（用你的 X 账号登录 [console.x.com](https://console.x.com) 开通）、一个模型接口的 key。
+2. **创建 X App 并充值**：按下方「[X App 设置](#x-app-设置三种方式都要)」填写，Callback URI 先填 `http://127.0.0.1:8787/api/x/callback` 占位，第 4 步再改；记下 Client ID 和 Client Secret。充值少量额度（比如 $5），**不要开 auto-recharge**。
+3. **部署**：点下方「[Deploy to Cloudflare](#方式一cloudflare-workers推荐)」按钮，在表单里填网站密码、X 的 Client ID / Secret、模型接口（`LLM_BASE_URL`、`LLM_API_KEY`、`LLM_MODEL`）。完成后得到 `https://x-bookmark-manager.<你的子域>.workers.dev`。
+4. **改回调地址**：回到 X App，把 Callback URI 改成 `<你的网站地址>/api/x/callback`，必须一字不差。
+5. **导入收藏**：先在 Cloudflare 后台 Workers & Pages → x-bookmark-manager → Settings → Variables and Secrets 加一个变量 `X_MONTHLY_READ_CAP`，值设为收藏数的 3 倍左右（默认 1500 只够导七八百条，导完再删掉）。然后打开网站，用你的密码登录（用户名任意），点左下角「连接 X」并授权，再点「同步」。每次同步最多整理 600 条，显示「待整理」时再点一次「同步」继续。细节见「[导入已有收藏](#导入已有收藏)」。
+6. **清理**：打开「待清理」，模型判为过期或垃圾的条目默认全选；取消勾选想留的，或点「保留」让它以后不再出现，然后点「移到回收站」，这些条目会同时从 X 收藏夹取消。回收站里点「恢复」会重新收藏到 X，确认无误后再「彻底删除」。细节见「[清理与回收站](#清理与回收站)」。
+
+以 1000 条收藏为例：首次导入约 $1–3，清理 200 条约 $1（每条 $0.005），之后日常每月几毛钱。用 Docker 部署时第 3 步换成下方方式二或三，其余步骤相同；Docker 版回调地址里的网站地址就是你的 `PUBLIC_URL`。
 
 ## 部署
 
