@@ -38,7 +38,7 @@ function origin(req) {
   return `${proto}://${req.headers['x-forwarded-host'] || req.headers.host}`;
 }
 
-createServer(async (req, res) => {
+const server = createServer(async (req, res) => {
   try {
     const chunks = [];
     for await (const c of req) chunks.push(c);
@@ -54,4 +54,4 @@ createServer(async (req, res) => {
     console.error(e);
     res.writeHead(500, { 'Content-Type': 'text/plain' }).end('Internal Server Error');
   }
-}).listen(PORT, HOST, () => console.log(`x-bookmark-manager on http://${HOST}:${PORT}`));
+}).listen(PORT, HOST, () => console.log(`x-bookmark-manager on http://${HOST}:${server.address().port}`));

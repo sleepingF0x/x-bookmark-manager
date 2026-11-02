@@ -27,17 +27,7 @@ jobs:
         with:
           node-version: 24
       - name: Smoke-test the Node edition
-        env:
-          SITE_PASSWORD: ci
-          DB_PATH: /tmp/ci.db
-          PORT: 8787
-        run: |
-          node src/node.js & sleep 2
-          curl -sf http://127.0.0.1:8787/healthz
-          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8787/)" = 401
-          curl -sf -u x:ci http://127.0.0.1:8787/ >/dev/null
-          curl -sf -u x:ci http://127.0.0.1:8787/api/items | grep -q '"items"'
-          curl -sf -u x:ci http://127.0.0.1:8787/api/x/status | grep -q '"connected":false'
+        run: npm test
 
   docker:
     runs-on: ubuntu-latest
