@@ -117,6 +117,18 @@ export async function bookmarkIdsPage(env, userId, paginationToken) {
 // Full details for specific posts (up to 100), shaped like a bookmarks page.
 export const lookupPosts = (env, ids) => readWithFields(env, '/2/tweets', { ids: ids.join(',') }, ids.length * 3);
 
+// Which of these posts (up to 100) still exist and are visible to the user. Ids only, no expansions:
+// X bills per post returned, so a deleted post costs nothing. Ids in neither set were not answered for.
+export async function visiblePosts(env, ids) {
+  await reserve(env, 'reads', ids.length);
+  const page = await xFetch(env, `/2/tweets?${new URLSearchParams({ ids: ids.join(',') })}`);
+  await addUsage(env, 'reads', page.data?.length || 0);
+  return {
+    visible: new Set((page.data || []).map((p) => p.id)),
+    missing: new Set((page.errors || []).map((e) => String(e.resource_id || e.value || '')).filter(Boolean)), // deleted, protected, suspended
+  };
+}
+
 export async function removeBookmark(env, userId, tweetId) {
   await reserve(env, 'writes', 1);
   await addUsage(env, 'writes', 1); // billed per request, so count before knowing the outcome
