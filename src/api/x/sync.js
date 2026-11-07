@@ -8,6 +8,9 @@
 // bookmark → recycle bin. Gone (deleted, protected, suspended) → stays in the library marked unavailable,
 // since it may be the only copy. Only a complete walk proves an item is off the list: a bookmarked = 0 from
 // an older version or the local import may be wrong, and such items are simply marked bookmarked again.
+// X's list can also end early without saying so (seen in practice: ~200 of ~700 bookmarks, no error). The
+// list is newest first, so removal is only inferred for items bookmarked after the oldest one it returned;
+// anything older is out of reach and left exactly as it is.
 import { pageToRows } from '../../lib/items.js';
 import { BudgetError, acquireLock, getMeta, json, putMeta, releaseLock } from '../../lib/store.js';
 import { XError, bookmarkIdsPage, bookmarksPage, credits, lookupPosts, visiblePosts } from '../../lib/x.js';
@@ -22,7 +25,7 @@ export async function onRequestPost({ request, env }) {
   try {
     const before = await credits(env);
     const { results: rows } = await env.DB.prepare(
-      `SELECT id, bookmarked, trashed_at IS NOT NULL AS trashed, json_extract(data, '$.unavailable') IS NOT NULL AS unavailable FROM items`).all();
+      `SELECT id, no, bookmarked, trashed_at IS NOT NULL AS trashed, json_extract(data, '$.unavailable') IS NOT NULL AS unavailable FROM items`).all();
     const known = new Map(rows.map((r) => [r.id, r.bookmarked]));
     const seen = new Set(); // ids currently bookmarked on X, newest first
     const fresh = new Map(); // id -> row for items not in the library yet
@@ -69,7 +72,15 @@ export async function onRequestPost({ request, env }) {
       .bind(r.id, m + 1 + i, JSON.stringify(r.data), r.src, now));
     const back = order.filter((id) => known.get(id) === 0);
     // Removal is only inferred from a complete, error-free walk of the list.
-    const gone = full && complete && !error ? [...known].filter(([id, b]) => b === 1 && !seen.has(id)).map(([id]) => id) : [];
+    // The oldest library item the list reached: a missing item numbered above it would have appeared before it.
+    // (Accession numbers follow bookmark order; a re-bookmarked old item sits near the top, never last.)
+    const noById = new Map(rows.map((r) => [r.id, r.no]));
+    const walked = full && complete && !error;
+    const lastKnown = walked ? order.findLast((id) => noById.has(id)) : undefined;
+    const floor = lastKnown === undefined ? Infinity : noById.get(lastKnown);
+    const inReach = (r) => !seen.has(r.id) && r.no > floor;
+    const gone = rows.filter((r) => r.bookmarked === 1 && inReach(r)).map((r) => r.id);
+    const beyondReach = walked ? rows.filter((r) => r.bookmarked === 1 && !seen.has(r.id) && r.no < floor).length : 0;
     // Re-bookmarking on X counts as "I want this": it also leaves the recycle bin.
     for (const c of chunk(back, 90)) {
       stmts.push(env.DB.prepare(`UPDATE items SET bookmarked = 1, trashed_at = NULL WHERE id IN (${c.map(() => '?').join(',')})`).bind(...c));
@@ -79,7 +90,7 @@ export async function onRequestPost({ request, env }) {
     }
 
     // In the library but, per a complete walk, not on the X list: just removed, or off X since earlier.
-    const offX = full && complete && !error ? rows.filter((r) => !r.trashed && !r.unavailable && !seen.has(r.id)).map((r) => r.id) : [];
+    const offX = rows.filter((r) => !r.trashed && !r.unavailable && inReach(r)).map((r) => r.id);
     const toBin = [], unavailable = [];
     try {
       for (const ids of chunk(offX, 100)) {
@@ -102,7 +113,7 @@ export async function onRequestPost({ request, env }) {
     const after = await credits(env);
     const spent = before && after ? +(before.total_balance - after.total_balance).toFixed(4) : null;
     const result = { at: now, full, seen: seen.size, added: added.length, rebookmarked: back.length, removedOnX: gone.length,
-      binned: toBin.length, unavailable: unavailable.length, unresolved: offX.length - toBin.length - unavailable.length, spent, error };
+      binned: toBin.length, unavailable: unavailable.length, unresolved: offX.length - toBin.length - unavailable.length, beyondReach, spent, error };
     await putMeta(env, 'x:lastSync', result);
     const log = (await getMeta(env, 'x:syncLog')) || [];
     await putMeta(env, 'x:syncLog', [result, ...log].slice(0, 30));

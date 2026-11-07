@@ -41,9 +41,10 @@ function fakeX(url, init) {
   }
   if (path === '/2/users/U/bookmarks') {
     const q = url.searchParams, n = +q.get('max_results'), at = +(q.get('pagination_token') || 0);
-    const ids = x.list.slice(at, at + n);
+    const visibleList = x.limit ? x.list.slice(0, x.limit) : x.list; // like X: may end early, without an error
+    const ids = visibleList.slice(at, at + n);
     x.pages++;
-    return Response.json({ ...page(ids, q.has('post.fields')), meta: at + n < x.list.length ? { next_token: String(at + n) } : {} });
+    return Response.json({ ...page(ids, q.has('post.fields')), meta: at + n < visibleList.length ? { next_token: String(at + n) } : {} });
   }
   if (path === '/2/tweets') { // deleted posts come back as errors, the rest as data
     if (x.lookupDown) return new Response('{"title":"Service Unavailable"}', { status: 503 });
@@ -93,7 +94,7 @@ globalThis.fetch = async (input, init) => {
 
 // ---------- app harness ----------
 function fresh({ env: extra = {}, list = [], connected = true } = {}) {
-  x = { list: [...list], pages: 0, deleted: new Set(), lookups: [] };
+  x = { list: [...list], pages: 0, deleted: new Set(), lookups: [], limit: 0 };
   llm = { mode: 'ok', reasoning: false, maxOut: 0, badKeys: new Set(), poison: new Set(), skip: new Set(), calls: [] };
   const DB = openD1(join(tmp, `t${++dbN}.db`));
   migrate(DB, join(root, 'migrations'));
@@ -394,6 +395,28 @@ test('items marked off X earlier are resolved by the next full check, once; wron
   const r2 = await app.call('POST', '/api/x/sync?full=1');
   assert.deepEqual([r2.json.binned, r2.json.unavailable], [0, 0]);
   assert.equal(x.lookups.length, lookups); // nothing looked up twice
+});
+test('X returning only the newest part of the list: older bookmarks are left alone', async () => {
+  const list = ids(60);
+  const app = fresh({ list });
+  await app.call('POST', '/api/x/sync?full=1');
+  const removed = list[5];                 // removed on X, inside the part X returns
+  const rebookmarked = list[50];           // an old post bookmarked again: now at the top of the list
+  x.list = [rebookmarked, ...list.filter((id) => id !== removed && id !== rebookmarked)];
+  x.limit = 20;                            // X stops after the newest 20 (up to list[19]), no error
+  const r = await app.call('POST', '/api/x/sync?full=1');
+  assert.equal(r.json.error, null);
+  // list[20..59] minus the re-bookmarked one were not returned: beyond reach, untouched.
+  assert.deepEqual([r.json.removedOnX, r.json.binned, r.json.beyondReach], [1, 1, 39], r.text);
+  const by = new Map(app.rows().map((x) => [x.id, x]));
+  assert.ok(by.get(removed).trashed_at);
+  const old = list.slice(20).filter((id) => id !== rebookmarked);
+  assert.ok(old.every((id) => by.get(id).bookmarked === 1 && !by.get(id).trashed_at), 'nothing beyond reach was touched');
+  // Items already marked off X but beyond reach are not binned either.
+  app.DB.raw.prepare('UPDATE items SET bookmarked = 0 WHERE id = ?').run(list[40]);
+  const r2 = await app.call('POST', '/api/x/sync?full=1');
+  assert.equal(r2.json.binned, 0);
+  assert.equal(app.rows().find((x) => x.id === list[40]).trashed_at, null);
 });
 test('a lookup that fails moves nothing to the bin and is retried by the next full check', async () => {
   const list = ids(8);
