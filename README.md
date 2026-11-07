@@ -170,6 +170,7 @@ docker run -d --name x-bookmark-manager --restart unless-stopped \
 - 首次导入前把 `X_MONTHLY_READ_CAP` 临时调到收藏数的 3 倍左右（计数包含作者和被引用的帖子），否则默认的 1500 会在七八百条处停下；导完再改回来。
 - 一次同步最多翻约 2700 条；收藏更多时，之后点一次「全量核对」补齐剩下的。
 - 每次同步最多整理 600 条，剩下的显示为「待整理」，再点一次「同步」继续。
+- 模型连续 3 轮都处理不了的条目（比如被模型接口的内容审核拦截）会放进「未分类」并标「模型未整理」，不再挡住后面的条目；接口本身不可用（key 错误、模型名不对、限流）时整理会停下，不会这样放弃。
 - 这条路径的代码与日常增量同步相同，但还没有在上千条的新库上完整跑过；遇到问题欢迎提 issue。
 
 **方法 B：本地流水线（macOS + Chrome）**。比网站同步导入的内容更完整（X 长文章全文、作者线程、图片 OCR 辅助分类、GitHub 仓库信息），适合收藏多、在意长文章的情况。
@@ -266,7 +267,7 @@ migrations/                  数据库表结构（D1 migrations；Node 版启动
 scripts/                     本地导入流水线；apply-sql.mjs 把 SQL 导入 Docker 版数据库
 wrangler.jsonc  package.json Cloudflare 配置（database_id 是占位符，部署按钮会自动替换）
 Dockerfile  docker-compose.yml  deploy/Caddyfile  .env.example   Docker 部署
-.github/workflows/           CI（登录单元测试、两个版本的冒烟测试）与镜像发布（ghcr.io）
+.github/workflows/           CI（登录与核心流程测试、两个版本的冒烟测试）与镜像发布（ghcr.io）
 ```
 
 ## 本地开发
@@ -276,12 +277,14 @@ npm install
 cp .dev.vars.example .dev.vars        # 至少填 SITE_PASSWORD
 npm run dev                           # Cloudflare 版：http://localhost:8787（本地 D1，Workers AI 走远程）
 SITE_PASSWORD=dev npm start           # Node 版：http://localhost:8787（storage/x-bookmarks.db）
+npm test                              # 登录、核心流程（X 与模型接口都是桩，不花钱）、冒烟测试
 ```
 
 ## 安全
 
 - 所有凭据（网站密码、X Client Secret、模型 key）只放在 Cloudflare 加密 secret 或你自己的 `.env` 里，不写进代码或仓库。X 的 OAuth token 存在你自己的数据库里。
 - 整站（包括静态文件和全部 API）都在登录检查之后：密码模式下 `SITE_PASSWORD` 未设置时一律返回 401；Cloudflare Access 模式下逐个请求校验 Access 令牌的签名、签发方（团队域名）、AUD 和有效期，校验失败返回 403。
+- 拒绝其他网站发起的 API 请求（浏览器标记的 `Sec-Fetch-Site`），写操作只接受 `application/json`：别的网页没法借你已登录的浏览器去同步、清理或调用模型花钱。
 - `data/`（本地流水线的个人数据）、`storage/`（Docker 版数据库）、`.env`、`.dev.vars` 都在 `.gitignore` 中。**数据库文件和导出包含 OAuth token，不要分享。**
 
 ## 已知限制

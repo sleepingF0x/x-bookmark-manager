@@ -1,6 +1,7 @@
 // Turning X API posts into library rows, then labelling (user's LLM) and embedding (Workers AI) them.
 // Mirrors scripts/digest.py + scripts/build_site.py so synced items look like the seeded ones.
-import { classify, llmConfigured } from './llm.js';
+import { LLMError, LLMOutputError, chat, classify, llmConfigured } from './llm.js';
+import { getMeta, putMeta } from './store.js';
 
 const EMBED_MODEL = '@cf/baai/bge-m3'; // must match scripts/embed.py and src/api/embed.js
 
@@ -118,28 +119,75 @@ async function embed(env, docs) {
 
 const embedDoc = (d) => `${d.title}\n${d.summary}\n${d.tags.join(' ')} ${d.category}\n${(d.body || '').slice(0, 400)}`;
 
+// After this many rounds in which the model could not label an item, it leaves the queue unlabelled
+// (category 未分类, marked labelError) instead of being retried at the head of every batch forever.
+export const MAX_LABEL_ATTEMPTS = 3;
+const FAILURES = 'process:failures'; // meta: {id: failed rounds}
+
+// Errors that may be about these particular items (a content filter refusing one post, a reply cut
+// off or malformed because the batch was too big) and are worth retrying in smaller batches. Auth,
+// unknown model, rate limits and outages are about the endpoint: they stop the run untouched.
+const itemSpecific = (e) => e instanceof LLMOutputError || (e instanceof LLMError && [400, 413, 422].includes(e.status));
+
+// Label rows, splitting the batch in half on an item-specific error until the failing items are
+// isolated. Returns {labels, failed: {id: reason}}; ids the model left out of its reply count as failed.
+async function labelRows(env, rows, knownTags) {
+  try {
+    const labels = await classify(env, rows, knownTags);
+    const failed = {};
+    for (const r of rows) if (!labels[r.id]) failed[r.id] = '模型没有返回这一条的有效分类';
+    return { labels, failed };
+  } catch (e) {
+    if (!itemSpecific(e)) throw e;
+    if (rows.length === 1) return { labels: {}, failed: { [rows[0].id]: e.message.slice(0, 200) }, error: e };
+    const mid = Math.ceil(rows.length / 2);
+    const a = await labelRows(env, rows.slice(0, mid), knownTags);
+    const b = await labelRows(env, rows.slice(mid), knownTags);
+    return { labels: { ...a.labels, ...b.labels }, failed: { ...a.failed, ...b.failed }, error: a.error || b.error };
+  }
+}
+
+// When not a single row got labelled, a 400 may just as well mean a wrong model name, an exhausted
+// balance or a max_tokens the model does not allow. Only a trivial request with the same parameters
+// (default max_tokens, as classify uses) that succeeds proves the items are the problem.
+async function endpointWorks(env) {
+  try { await chat(env, '只回复 JSON。', '回复 {"ok":true}'); return true; } catch { return false; }
+}
+
 // Label and embed up to `limit` pending rows. Without an LLM configured, items are embedded with
 // their raw text and stay pending so they get labelled once the LLM secrets exist.
 export async function processPending(env, limit = 20) {
   const llm = llmConfigured(env);
   const { results } = await env.DB.prepare(
     `SELECT id, data, src FROM items WHERE pending = 1 ${llm ? '' : 'AND vec IS NULL'} ORDER BY no DESC LIMIT ?`).bind(limit).all();
-  if (!results.length) return { processed: 0, labelled: 0 };
+  if (!results.length) return { processed: 0, labelled: 0, failed: 0, gaveUp: 0 };
   const rows = results.map((r) => ({ id: r.id, data: JSON.parse(r.data), src: r.src }));
-  let labels = {};
+  let labels = {}, failed = {};
   if (llm) {
     const known = await env.DB.prepare(
       `SELECT j.value AS tag, count(*) AS n FROM items, json_each(json_extract(items.data, '$.tags')) AS j
        GROUP BY lower(j.value) ORDER BY n DESC LIMIT 120`).all();
-    labels = await classify(env, rows, known.results.map((r) => r.tag));
+    const r = await labelRows(env, rows, known.results.map((x) => x.tag));
+    if (!Object.keys(r.labels).length && !(await endpointWorks(env))) throw r.error || new Error('模型接口不可用');
+    ({ labels, failed } = r);
+  }
+  // Count this round's failures; an item that keeps failing is given up on.
+  const failures = llm ? (await getMeta(env, FAILURES)) || {} : {};
+  const gaveUp = new Set();
+  for (const id of Object.keys(labels)) delete failures[id];
+  for (const id of Object.keys(failed)) {
+    failures[id] = (failures[id] || 0) + 1;
+    if (failures[id] >= MAX_LABEL_ATTEMPTS) { gaveUp.add(id); delete failures[id]; }
   }
   const vecs = await embed(env, rows.map((r) => embedDoc({ ...r.data, ...labels[r.id] })));
   const stmts = rows.map((r, i) => {
     const lab = labels[r.id];
-    const data = lab ? { ...r.data, ...lab } : r.data;
+    const data = lab ? { ...r.data, ...lab } : gaveUp.has(r.id) ? { ...r.data, labelError: failed[r.id] } : r.data;
+    const done = Boolean(lab) || gaveUp.has(r.id);
     return env.DB.prepare('UPDATE items SET data = ?, vec = ?, pending = ?, src = ? WHERE id = ?')
-      .bind(JSON.stringify(data), vecs[i], lab ? 0 : 1, lab ? null : r.src, r.id);
+      .bind(JSON.stringify(data), vecs[i], done ? 0 : 1, done ? null : r.src, r.id);
   });
   await env.DB.batch(stmts);
-  return { processed: rows.length, labelled: Object.keys(labels).length };
+  if (llm) await putMeta(env, FAILURES, failures);
+  return { processed: rows.length, labelled: Object.keys(labels).length, failed: Object.keys(failed).length, gaveUp: gaveUp.size };
 }

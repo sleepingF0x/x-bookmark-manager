@@ -533,7 +533,7 @@ function rowHtml(it) {
   const score = '●'.repeat(it.score) + `<span class="off">${'●'.repeat(5 - it.score)}</span>`;
   const th = it.thumb ? `<span class="th"><img src="${esc(sized(it.thumb, 'thumb'))}" alt="" width="48" height="48" loading="lazy" referrerpolicy="no-referrer">${it.video ? '<span class="v">视频</span>' : ''}</span>` : '';
   const flag = it.cleanup !== 'keep' && !it.kept && state.view === 'browse' ? `<span class="flag ${it.cleanup}">${FLAG[it.cleanup]}</span>` : '';
-  const states = [it.pending ? '待整理' : '', state.view === 'bin' ? (it.bookmarked ? 'X 上未移除' : '') : (!it.bookmarked && !it.trashed ? '已不在 X 收藏' : '')].filter(Boolean);
+  const states = [it.pending ? '待整理' : '', it.labelError ? '模型未整理' : '', state.view === 'bin' ? (it.bookmarked ? 'X 上未移除' : '') : (!it.bookmarked && !it.trashed ? '已不在 X 收藏' : '')].filter(Boolean);
   const why = state.view !== 'browse' && it.reason ? `<span class="why"><span class="flag ${it.cleanup}">${FLAG[it.cleanup] || ''}</span> ${esc(it.reason)}</span>` : '';
   return `<li class="row" data-id="${it.id}" aria-current="${it.id === state.id}">
     ${checkable ? `<label class="pick"><input type="checkbox" data-pick="${it.id}" ${sel.has(it.id) ? 'checked' : ''} aria-label="选择：${esc(it.title)}"></label>` : ''}
@@ -885,7 +885,8 @@ async function processAll() {
   let changed = false;
   for (let k = 0; k < 60; k++) {
     const j = await post('api/x/process');
-    if (!j.processed || (xs?.configured.llm && !j.labelled)) break;
+    // A round that only recorded failures still progresses: items the model keeps failing on leave the queue after a few rounds.
+    if (!j.processed || (xs?.configured.llm && !j.labelled && !j.failed)) break;
     changed = true;
     setX(`整理中，还剩 ${j.remaining} 条`);
     if (!j.remaining) break;

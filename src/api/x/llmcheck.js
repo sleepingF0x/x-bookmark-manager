@@ -8,7 +8,7 @@ async function compare(env, n) {
   const { results } = await env.DB.prepare('SELECT id, data FROM items WHERE pending = 0 ORDER BY random() LIMIT ?').bind(n).all();
   const rows = results.map((r) => {
     const d = JSON.parse(r.data);
-    return { id: r.id, data: d, src: `@${d.handle} ${d.date}\n${d.text}`.slice(0, 1500) };
+    return { id: r.id, data: d, src: `@${d.handle} ${d.date}\n${[d.body, d.quote?.body, d.article?.title].filter(Boolean).join('\n')}`.slice(0, 1500) };
   });
   const t = Date.now();
   const labels = await classify(env, rows, []);
@@ -42,7 +42,9 @@ export async function onRequestGet({ request, env }) {
   if (q.get('compare')) return compare(env, Math.min(20, +q.get('compare') || 10));
   const t = Date.now();
   try {
-    const out = await chat(env, '只回复 JSON。', '回复 {"ok":true}', 50);
+    // The same token limit as labelling: room for a reasoning model's thinking (50 left those with an
+    // empty reply), and a limit the model does not allow shows up here rather than in the first sync.
+    const out = await chat(env, '只回复 JSON。', '回复 {"ok":true}');
     return Response.json({ ok: /"ok"\s*:\s*true/.test(out), model: env.LLM_MODEL, ms: Date.now() - t, reply: out.slice(0, 100) });
   } catch (e) {
     return Response.json({ ok: false, model: env.LLM_MODEL, error: e.message.slice(0, 300) });
