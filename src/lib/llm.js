@@ -60,6 +60,18 @@ export async function chat(env, system, user, maxTokens = 4096) {
   }
 }
 
+// Model ids the endpoint offers (GET /models, which OpenAI- and Anthropic-style APIs both have).
+export async function listModels(env) {
+  const base = env.LLM_BASE_URL.replace(/\/+$/, '');
+  const anthropic = format(env) === 'anthropic';
+  const r = await fetch(`${base}${anthropic && !/\/v1$/.test(base) ? '/v1' : ''}/models`, {
+    headers: anthropic ? { 'x-api-key': env.LLM_API_KEY, 'anthropic-version': '2023-06-01' } : { Authorization: `Bearer ${env.LLM_API_KEY}` },
+  });
+  if (!r.ok) return { ok: false, error: `GET /models ${r.status}: ${(await r.text()).slice(0, 300)}` };
+  const { data } = await r.json();
+  return { ok: true, models: (data || []).map((m) => m.id).filter(Boolean) };
+}
+
 // The {"items":[…]} object out of a reply, tolerating text around it. Tweet ids exceed 2^53: if the
 // model writes them as bare numbers, they are quoted before parsing.
 function parseItems(out) {

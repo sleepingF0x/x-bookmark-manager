@@ -28,8 +28,10 @@ export function releaseLock(env, name) {
 // in code, independent of the spending limit set in the X developer console.
 const month = () => new Date().toISOString().slice(0, 7);
 
+export const DEFAULT_CAPS = { reads: 1500, writes: 200 };
+
 export function caps(env) {
-  return { reads: +(env.X_MONTHLY_READ_CAP || 1500), writes: +(env.X_MONTHLY_WRITE_CAP || 200) };
+  return { reads: +(env.X_MONTHLY_READ_CAP || DEFAULT_CAPS.reads), writes: +(env.X_MONTHLY_WRITE_CAP || DEFAULT_CAPS.writes) };
 }
 
 export async function usage(env) {

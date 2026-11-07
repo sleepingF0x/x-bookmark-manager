@@ -1,11 +1,9 @@
 # Secrets for the Cloudflare edition. The Deploy to Cloudflare button asks for these;
 # for `npm run dev`, copy this file to .dev.vars and fill it in.
+# The model endpoint and the monthly X API caps are set on the site's 设置 panel after deploying.
 SITE_PASSWORD=
 X_CLIENT_ID=
 X_CLIENT_SECRET=
-LLM_BASE_URL=
-LLM_API_KEY=
-LLM_MODEL=
 
 # Optional: sign in with Cloudflare Access instead of SITE_PASSWORD (see README).
 # Usually set in the dashboard after enabling Access, not here; wrangler dev has no Access in front.

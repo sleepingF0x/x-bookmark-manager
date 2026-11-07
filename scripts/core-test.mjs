@@ -52,9 +52,15 @@ function fakeX(url, init) {
 // The LLM endpoint, OpenAI style. `mode`: ok | 401 (bad key) | 400 (e.g. unknown model, every call).
 // `reasoning`: behaves like OpenAI's reasoning models and rejects max_tokens.
 const HEALTH = '回复 {"ok":true}';
-function fakeLLM(init) {
+function fakeLLM(url, init) {
+  const auth = init?.headers?.Authorization || init?.headers?.['x-api-key'];
+  if (url.pathname.endsWith('/models')) {
+    llm.calls.push({ host: url.host, auth, models: true });
+    return Response.json({ data: [{ id: 'model-a' }, { id: 'model-b' }] });
+  }
   const body = JSON.parse(init.body);
-  llm.calls.push(body);
+  llm.calls.push({ ...body, host: url.host, auth });
+  if (llm.badKeys.has(auth)) return new Response('{"error":"invalid api key"}', { status: 401 });
   if (llm.mode === '401') return new Response('{"error":"invalid api key"}', { status: 401 });
   if (llm.mode === '400') return new Response('{"error":"Model Not Exist"}', { status: 400 });
   if (llm.maxOut && (body.max_tokens ?? body.max_completion_tokens) > llm.maxOut) {
@@ -75,14 +81,14 @@ function fakeLLM(init) {
 globalThis.fetch = async (input, init) => {
   const url = new URL(String(input));
   if (url.host === 'api.x.com') return fakeX(url, init);
-  if (url.host === 'llm.test') return fakeLLM(init);
+  if (url.host.endsWith('llm.test')) return fakeLLM(url, init);
   throw new TypeError('unexpected fetch ' + url);
 };
 
 // ---------- app harness ----------
 function fresh({ env: extra = {}, list = [], connected = true } = {}) {
   x = { list: [...list], pages: 0 };
-  llm = { mode: 'ok', reasoning: false, maxOut: 0, poison: new Set(), skip: new Set(), calls: [] };
+  llm = { mode: 'ok', reasoning: false, maxOut: 0, badKeys: new Set(), poison: new Set(), skip: new Set(), calls: [] };
   const DB = openD1(join(tmp, `t${++dbN}.db`));
   migrate(DB, join(root, 'migrations'));
   const AI = { run: async (_m, { text }) => ({ data: text.map(() => [0.5, 0.5, 0.5, 0.5]) }) };
@@ -223,6 +229,85 @@ test('a token limit the model does not allow is not blamed on the items either',
   assert.equal((await app.call('GET', '/api/x/llmcheck')).json.ok, false); // the diagnostic shows it too
   for (let k = 0; k < MAX_LABEL_ATTEMPTS + 1; k++) assert.equal((await app.call('POST', '/api/x/process')).status, 502);
   assert.ok(app.rows().every((r) => r.pending === 1 && !r.data.labelError));
+});
+
+// ---------- settings panel ----------
+test('settings: deployment variables are shown as the fallback, keys never returned', async () => {
+  const app = fresh({ env: { X_MONTHLY_READ_CAP: '3000', LLM_API_KEY: 'sk-deployment-key-0000-wxyz' } });
+  const r = await app.call('GET', '/api/settings');
+  assert.equal(r.status, 200);
+  assert.deepEqual([r.json.llm.source, r.json.llm.keyHint, r.json.llm.baseUrl], ['env', 'wxyz', 'https://llm.test/v1']);
+  assert.deepEqual([r.json.readCap.fallback, r.json.readCap.fallbackFrom, r.json.writeCap.fallback], [3000, 'env', 200]);
+  assert.ok(!r.text.includes('sk-deployment-key'));
+});
+test('settings: caps saved on the page are what the budget enforces; clearing restores the variable', async () => {
+  const app = fresh({ env: { X_MONTHLY_READ_CAP: '3000' } });
+  assert.equal((await app.call('POST', '/api/settings', { body: { readCap: 4500, writeCap: 50 } })).status, 200);
+  assert.deepEqual((await app.call('GET', '/api/x/status')).json.caps, { reads: 4500, writes: 50 });
+  assert.equal(llm.calls.length, 0); // caps alone do not touch the model
+  await app.call('POST', '/api/settings', { body: { readCap: 5 } });
+  const sync = await app.call('POST', '/api/x/sync'); // a 10-post page reserves 30 reads
+  assert.match(sync.json.error, /上限（0\/5）/);
+  await app.call('POST', '/api/settings', { body: { readCap: null } });
+  assert.equal((await app.call('GET', '/api/x/status')).json.caps.reads, 3000);
+  for (const bad of [0, -1, 1.5, 'abc', 2e6]) assert.equal((await app.call('POST', '/api/settings', { body: { readCap: bad } })).status, 400, String(bad));
+});
+test('settings: a new endpoint is tried before saving and then used everywhere', async () => {
+  const app = fresh({ list: ids(2) });
+  const llm2 = { format: 'openai', baseUrl: 'https://other.llm.test/v1/', apiKey: 'sk-new-key-123456789' };
+  llm.badKeys.add('Bearer sk-wrong');
+  const bad = await app.call('POST', '/api/settings', { body: { llm: { ...llm2, apiKey: 'sk-wrong' } } });
+  assert.equal(bad.status, 400);
+  assert.match(bad.json.error, /没有保存/);
+  assert.equal((await app.call('GET', '/api/settings')).json.llm.source, 'env');
+  const ok = await app.call('POST', '/api/settings', { body: { llm: llm2, model: 'model-b' } });
+  assert.equal(ok.status, 200, ok.text);
+  assert.deepEqual([ok.json.llm.source, ok.json.llm.baseUrl, ok.json.model.page], ['page', 'https://other.llm.test/v1', 'model-b']);
+  llm.calls = [];
+  await app.call('POST', '/api/x/sync');
+  assert.equal((await processAll(app)).json.remaining, 0);
+  assert.ok(llm.calls.length && llm.calls.every((c) => c.host === 'other.llm.test' && c.auth === 'Bearer sk-new-key-123456789' && c.model === 'model-b'));
+  const back = await app.call('POST', '/api/settings', { body: { llm: null, model: null } });
+  assert.deepEqual([back.json.llm.source, back.json.llm.baseUrl], ['env', 'https://llm.test/v1']);
+});
+test('settings: a saved key can only go to the address it was entered with', async () => {
+  const app = fresh();
+  for (const llmBody of [
+    { format: 'openai', baseUrl: 'https://evil.example/v1' },                     // no key: refused, nothing sent
+    { format: 'openai', baseUrl: 'http://evil.example/v1', apiKey: 'sk-x' },      // plain http off this machine
+    { format: 'openai', baseUrl: 'https://user:pw@llm.test/v1', apiKey: 'sk-x' },
+    { format: 'gemini', baseUrl: 'https://llm.test/v1', apiKey: 'sk-x' },
+  ]) {
+    assert.equal((await app.call('POST', '/api/settings', { body: { llm: llmBody } })).status, 400, JSON.stringify(llmBody));
+    assert.equal((await app.call('POST', '/api/settings/models', { body: { llm: llmBody } })).status, 400);
+  }
+  assert.equal(llm.calls.length, 0);
+});
+test('settings: model picker lists the endpoint being entered or the current one', async () => {
+  const app = fresh();
+  const cur = await app.call('POST', '/api/settings/models', { body: {} });
+  assert.deepEqual(cur.json.models, ['model-a', 'model-b']);
+  assert.deepEqual([llm.calls[0].host, llm.calls[0].auth], ['llm.test', 'Bearer k']);
+  await app.call('POST', '/api/settings/models', { body: { llm: { format: 'anthropic', baseUrl: 'https://a.llm.test', apiKey: 'sk-ant-1' } } });
+  assert.deepEqual([llm.calls[1].host, llm.calls[1].auth], ['a.llm.test', 'sk-ant-1']);
+});
+test('settings: changing only the model is tried before saving', async () => {
+  const app = fresh();
+  const r = await app.call('POST', '/api/settings', { body: { model: 'model-z' } });
+  assert.equal(r.status, 200);
+  assert.equal(llm.calls.at(-1).model, 'model-z');
+});
+test('settings: a deployment without any LLM variables is set up entirely on the page', async () => {
+  const app = fresh({ list: ids(3), env: { LLM_BASE_URL: undefined, LLM_API_KEY: undefined, LLM_MODEL: undefined } });
+  assert.equal((await app.call('GET', '/api/x/status')).json.configured.llm, false);
+  assert.equal((await app.call('GET', '/api/settings')).json.llm.source, null);
+  const r = await app.call('POST', '/api/settings', { body: { llm: { format: 'openai', baseUrl: 'https://llm.test/v1', apiKey: 'sk-page-only-1234567' }, model: 'model-a' } });
+  assert.equal(r.status, 200, r.text);
+  assert.equal(llm.calls.length, 1); // tried once before saving
+  assert.equal((await app.call('GET', '/api/x/status')).json.configured.llm, true);
+  await app.call('POST', '/api/x/sync');
+  assert.equal((await processAll(app)).json.remaining, 0);
+  assert.ok(app.rows().every((x) => x.data.category === '开发与开源工具'));
 });
 
 // ---------- sync with X ----------
