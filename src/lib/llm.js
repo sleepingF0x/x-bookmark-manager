@@ -13,24 +13,65 @@ export const TYPES = ['工具/项目', '教程/方法', '资源合集', '观点/
 export const llmConfigured = (env) => Boolean(env.LLM_BASE_URL && env.LLM_API_KEY && env.LLM_MODEL);
 const format = (env) => env.LLM_FORMAT || (/anthropic/i.test(env.LLM_BASE_URL) ? 'anthropic' : 'openai');
 
+// The endpoint answered with an HTTP error; `status` lets callers tell bad input from a bad setup.
+export class LLMError extends Error {
+  constructor(status, body) {
+    super(`LLM ${status}: ${String(body).slice(0, 300)}`);
+    this.status = status;
+    this.body = String(body);
+  }
+}
+
+// The endpoint answered, but not with the JSON the prompt asked for (truncated, prose, refusal).
+export class LLMOutputError extends Error {}
+
+async function postJson(url, headers, body) {
+  const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body) });
+  if (!r.ok) throw new LLMError(r.status, await r.text());
+  return r.json();
+}
+
+// OpenAI's reasoning models (o-series, gpt-5) reject max_tokens and want max_completion_tokens, while
+// many other OpenAI-compatible endpoints only know max_tokens. Start with max_tokens, switch when the
+// error names the other parameter, and remember what worked for this endpoint + model.
+const tokenParam = new Map();
+
 export async function chat(env, system, user, maxTokens = 4096) {
   const base = env.LLM_BASE_URL.replace(/\/+$/, '');
   if (format(env) === 'anthropic') {
-    const r = await fetch(`${base}${/\/v1$/.test(base) ? '' : '/v1'}/messages`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-api-key': env.LLM_API_KEY, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify({ model: env.LLM_MODEL, max_tokens: maxTokens, system, messages: [{ role: 'user', content: user }] }),
-    });
-    if (!r.ok) throw new Error(`LLM ${r.status}: ${(await r.text()).slice(0, 300)}`);
-    return (await r.json()).content.filter((b) => b.type === 'text').map((b) => b.text).join('');
+    const j = await postJson(`${base}${/\/v1$/.test(base) ? '' : '/v1'}/messages`,
+      { 'x-api-key': env.LLM_API_KEY, 'anthropic-version': '2023-06-01' },
+      { model: env.LLM_MODEL, max_tokens: maxTokens, system, messages: [{ role: 'user', content: user }] });
+    return (j.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('');
   }
-  const r = await fetch(`${base}/chat/completions`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.LLM_API_KEY}` },
-    body: JSON.stringify({ model: env.LLM_MODEL, max_tokens: maxTokens, messages: [{ role: 'system', content: system }, { role: 'user', content: user }] }),
-  });
-  if (!r.ok) throw new Error(`LLM ${r.status}: ${(await r.text()).slice(0, 300)}`);
-  return (await r.json()).choices[0].message.content;
+  const key = `${base} ${env.LLM_MODEL}`;
+  let param = tokenParam.get(key) || 'max_tokens';
+  for (let attempt = 0; ; attempt++) {
+    try {
+      const j = await postJson(`${base}/chat/completions`, { Authorization: `Bearer ${env.LLM_API_KEY}` },
+        { model: env.LLM_MODEL, [param]: maxTokens, messages: [{ role: 'system', content: system }, { role: 'user', content: user }] });
+      tokenParam.set(key, param);
+      return j.choices?.[0]?.message?.content || ''; // null when a reasoning model spent the whole budget thinking
+    } catch (e) {
+      const other = param === 'max_tokens' ? 'max_completion_tokens' : 'max_tokens';
+      if (attempt || !(e instanceof LLMError) || e.status !== 400 || !e.body.includes(other)) throw e;
+      param = other;
+    }
+  }
+}
+
+// The {"items":[…]} object out of a reply, tolerating text around it. Tweet ids exceed 2^53: if the
+// model writes them as bare numbers, they are quoted before parsing.
+function parseItems(out) {
+  const start = out.indexOf('{'), end = out.lastIndexOf('}');
+  if (start < 0 || end < start) throw new LLMOutputError(`模型没有返回 JSON：${out.slice(0, 120)}`);
+  let parsed;
+  try {
+    parsed = JSON.parse(out.slice(start, end + 1).replace(/"id"\s*:\s*(\d+)/g, '"id":"$1"'));
+  } catch (e) {
+    throw new LLMOutputError(`模型返回的 JSON 无法解析：${e.message}`);
+  }
+  return Array.isArray(parsed?.items) ? parsed.items : [];
 }
 
 const CLEANUP_RULES = `- cleanup：
@@ -64,9 +105,7 @@ ${CLEANUP_RULES}
 // Returns {id: label fields in site format}; ids the model skipped or mangled are simply absent.
 export async function classify(env, rows, knownTags) {
   const prompt = rows.map((r) => `<item id="${r.id}">\n${r.src}\n</item>`).join('\n\n');
-  const out = await chat(env, system(knownTags), prompt);
-  // Tweet ids exceed 2^53: if the model writes them as bare numbers, quote them before parsing.
-  const parsed = JSON.parse(out.slice(out.indexOf('{'), out.lastIndexOf('}') + 1).replace(/"id"\s*:\s*(\d+)/g, '"id":"$1"'));
+  const items = parseItems(await chat(env, system(knownTags), prompt));
   // Models drift on spacing/punctuation in enum values ("加密与Web3"); match on a loose key.
   const loose = (v) => String(v || '').replace(/[\s、，,/]/g, '').toLowerCase();
   // A shortened name ("副业" for "副业、创业与个人品牌") is accepted when it fits exactly one entry.
@@ -78,7 +117,7 @@ export async function classify(env, rows, knownTags) {
   const canon = new Map(knownTags.map((t) => [t.toLowerCase().replace(/[\s-]/g, ''), t]));
   const byId = new Map(rows.map((r) => [r.id, r]));
   const labels = {};
-  for (const it of parsed.items || []) {
+  for (const it of items) {
     const row = byId.get(String(it.id));
     const category = pick(CATEGORIES, it.category), type = pick(TYPES, it.type);
     if (!row || !category || !type) continue;
@@ -93,7 +132,7 @@ export async function classify(env, rows, knownTags) {
       score: Math.max(1, Math.min(5, Math.round(+it.score) || 3)), cleanup, reason,
     };
   }
-  Object.defineProperty(labels, 'raw', { value: parsed.items || [] }); // for /api/x/llmcheck diagnostics
+  Object.defineProperty(labels, 'raw', { value: items }); // for /api/x/llmcheck diagnostics
   return labels;
 }
 
@@ -114,11 +153,10 @@ ${CLEANUP_RULES}
     return n ? ` · 含${n}个${d.video ? '图片/视频' : '图片'}` : '';
   };
   const prompt = items.map((d) => `<item id="${d.id}">\n发布 ${d.date} · ${d.category} · ${d.type}${visual(d)}\n${d.title}\n${d.summary}\n${[d.article?.title, d.body].filter(Boolean).join('\n').slice(0, 400)}\n</item>`).join('\n\n');
-  const out = await chat(env, sys, prompt);
-  const parsed = JSON.parse(out.slice(out.indexOf('{'), out.lastIndexOf('}') + 1).replace(/"id"\s*:\s*(\d+)/g, '"id":"$1"'));
+  const verdicts = parseItems(await chat(env, sys, prompt));
   const byId = new Map(items.map((d) => [d.id, d]));
   const res = {};
-  for (const it of parsed.items || []) {
+  for (const it of verdicts) {
     const d = byId.get(String(it.id));
     if (!d || !['keep', 'expired', 'junk'].includes(it.cleanup)) continue;
     let cleanup = it.cleanup;
