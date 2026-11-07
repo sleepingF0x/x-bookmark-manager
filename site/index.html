@@ -972,6 +972,7 @@ async function syncX(full = false) {
     if (j.binned) msg += `，${j.binned} 条已在 X 上取消收藏，移到了回收站`;
     if (j.unavailable) msg += `，${j.unavailable} 条原帖已删除或不可见，留在知识库`;
     if (j.unresolved) msg += `，${j.unresolved} 条已不在 X 收藏（下次全量核对再核实）`;
+    if (j.beyondReach) msg += `。X 只返回了较新的 ${j.seen} 条收藏，更早的 ${j.beyondReach} 条没法核对，保持原样`;
     if (j.rebookmarked) msg += `，${j.rebookmarked} 条重新收藏`;
     if (j.spent != null) msg += ` · 花费 $${j.spent}`;
     setX(j.error ? `${msg} · ${j.error}` : msg, Boolean(j.error));
