@@ -103,6 +103,7 @@ function system(knownTags) {
 - type：${TYPES.join('、')} 之一。
 - title：不超过 25 字的中文标题，概括这条讲什么（不是照抄第一句）。
 - summary：1-2 句中文，说清楚“具体是什么 + 对读者有什么用”，不超过 80 字。
+- title、summary、cleanup_reason 用中文全角标点（，：；（）），不要用半角逗号、冒号。
 - score：作为知识库的长期价值，1-5 的整数。5=高质量深度内容或常用利器；3=有参考价值；1=几乎无信息。
 ${CLEANUP_RULES}
 - cleanup_reason：cleanup 不是 keep 时用一句话说明理由，否则为空字符串。
