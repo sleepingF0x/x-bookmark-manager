@@ -45,7 +45,13 @@ function fakeX(url, init) {
     x.pages++;
     return Response.json({ ...page(ids, q.has('post.fields')), meta: at + n < x.list.length ? { next_token: String(at + n) } : {} });
   }
-  if (path === '/2/tweets') return Response.json(page(url.searchParams.get('ids').split(','), true));
+  if (path === '/2/tweets') { // deleted posts come back as errors, the rest as data
+    if (x.lookupDown) return new Response('{"title":"Service Unavailable"}', { status: 503 });
+    const ids = url.searchParams.get('ids').split(','), live = ids.filter((id) => !x.deleted.has(id));
+    x.lookups.push(ids);
+    const errors = ids.filter((id) => x.deleted.has(id)).map((id) => ({ resource_id: id, value: id, title: 'Not Found Error' }));
+    return Response.json({ ...(live.length ? page(live, url.searchParams.has('post.fields')) : {}), ...(errors.length ? { errors } : {}) });
+  }
   return new Response('unexpected X call ' + method + ' ' + path, { status: 500 });
 }
 
@@ -87,7 +93,7 @@ globalThis.fetch = async (input, init) => {
 
 // ---------- app harness ----------
 function fresh({ env: extra = {}, list = [], connected = true } = {}) {
-  x = { list: [...list], pages: 0 };
+  x = { list: [...list], pages: 0, deleted: new Set(), lookups: [] };
   llm = { mode: 'ok', reasoning: false, maxOut: 0, badKeys: new Set(), poison: new Set(), skip: new Set(), calls: [] };
   const DB = openD1(join(tmp, `t${++dbN}.db`));
   migrate(DB, join(root, 'migrations'));
@@ -341,12 +347,67 @@ test('full check: removed on X, re-bookmarked on X (leaves the bin), new', async
   x.list = x.list.filter((id) => id !== gone1 && id !== gone2);
   x.list.unshift(binned, ...ids(1, 200)); // re-bookmarked directly on X, plus a new one
   const r = await app.call('POST', '/api/x/sync?full=1');
-  assert.deepEqual([r.json.added, r.json.rebookmarked, r.json.removedOnX, r.json.error], [1, 1, 2, null], r.text);
+  assert.deepEqual([r.json.added, r.json.rebookmarked, r.json.removedOnX, r.json.binned, r.json.error], [1, 1, 2, 2, null], r.text);
   const by = new Map(app.rows().map((x) => [x.id, x]));
   assert.equal(by.get(binned).bookmarked, 1);
   assert.equal(by.get(binned).trashed_at, null);
-  assert.equal(by.get(gone1).bookmarked, 0);
-  assert.equal(by.get(gone2).bookmarked, 0);
+  for (const id of [gone1, gone2]) assert.deepEqual([by.get(id).bookmarked, Boolean(by.get(id).trashed_at)], [0, true]);
+});
+test('removed on X: still-existing posts go to the bin, deleted posts stay in the library', async () => {
+  const list = ids(20);
+  const app = fresh({ list });
+  await app.call('POST', '/api/x/sync');
+  const [cleaned, deleted] = [list[3], list[8]];
+  x.list = x.list.filter((id) => id !== cleaned && id !== deleted);
+  x.deleted.add(deleted);
+  const r = await app.call('POST', '/api/x/sync?full=1');
+  assert.deepEqual([r.json.removedOnX, r.json.binned, r.json.unavailable, r.json.unresolved], [2, 1, 1, 0], r.text);
+  const by = new Map(app.rows().map((x) => [x.id, x]));
+  assert.ok(by.get(cleaned).trashed_at);
+  assert.equal(by.get(deleted).trashed_at, null);
+  assert.ok(by.get(deleted).data.unavailable);
+  assert.equal((await app.call('POST', '/api/purge', { body: { ids: [cleaned] } })).json.deleted, 1); // bin → delete works
+  // A cleaned bookmark re-added on X comes back out of the bin.
+  const again = list[5];
+  x.list = x.list.filter((id) => id !== again);
+  await app.call('POST', '/api/x/sync?full=1');
+  x.list.unshift(again);
+  await app.call('POST', '/api/x/sync');
+  assert.equal(app.rows().find((x) => x.id === again).trashed_at, null);
+});
+test('items marked off X earlier are resolved by the next full check, once; wrong marks are corrected', async () => {
+  const list = ids(12);
+  const app = fresh({ list });
+  await app.call('POST', '/api/x/sync');
+  const off = list.slice(0, 3); // marked off X by an earlier version or the local import
+  const wrong = list[11];       // marked off X by an incomplete export, but still bookmarked
+  app.DB.raw.prepare(`UPDATE items SET bookmarked = 0 WHERE id IN (${[...off, wrong].map(() => '?').join(',')})`).run(...off, wrong);
+  x.list = x.list.filter((id) => !off.includes(id));
+  x.deleted.add(off[2]);
+  const inc = await app.call('POST', '/api/x/sync'); // a normal sync cannot tell, so it leaves them alone
+  assert.deepEqual([inc.json.binned, inc.json.unavailable, x.lookups.length], [0, 0, 0]);
+  const r = await app.call('POST', '/api/x/sync?full=1');
+  assert.deepEqual([r.json.binned, r.json.unavailable], [2, 1], r.text);
+  const w = app.rows().find((x) => x.id === wrong);
+  assert.deepEqual([w.bookmarked, w.trashed_at], [1, null]);
+  const lookups = x.lookups.length;
+  const r2 = await app.call('POST', '/api/x/sync?full=1');
+  assert.deepEqual([r2.json.binned, r2.json.unavailable], [0, 0]);
+  assert.equal(x.lookups.length, lookups); // nothing looked up twice
+});
+test('a lookup that fails moves nothing to the bin and is retried by the next full check', async () => {
+  const list = ids(8);
+  const app = fresh({ list });
+  await app.call('POST', '/api/x/sync');
+  app.DB.raw.prepare('UPDATE items SET bookmarked = 0 WHERE id = ?').run(list[0]);
+  x.list = x.list.filter((id) => id !== list[0]);
+  x.lookupDown = true;
+  const r = await app.call('POST', '/api/x/sync?full=1');
+  assert.deepEqual([r.json.binned, r.json.unresolved], [0, 1]);
+  assert.match(r.json.error, /503/);
+  assert.equal(app.rows().find((x) => x.id === list[0]).trashed_at, null);
+  x.lookupDown = false;
+  assert.equal((await app.call('POST', '/api/x/sync?full=1')).json.binned, 1);
 });
 test('a full check cut short by the read cap infers no removals', async () => {
   const list = ids(150);

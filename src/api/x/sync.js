@@ -3,9 +3,14 @@
 // first page that contains an item already known as bookmarked, so a routine sync costs about 10 reads.
 // ?full=1 additionally walks the whole list as bare ids (~1 read per bookmark) to find items removed or
 // re-added on X directly; unknown ids found that way are looked up with details.
+// After a complete full check, library items missing from the list follow the user's cleanup: X is asked
+// which of those posts still exist (one cheap lookup per item, once). Still there → the user removed the
+// bookmark → recycle bin. Gone (deleted, protected, suspended) → stays in the library marked unavailable,
+// since it may be the only copy. Only a complete walk proves an item is off the list: a bookmarked = 0 from
+// an older version or the local import may be wrong, and such items are simply marked bookmarked again.
 import { pageToRows } from '../../lib/items.js';
 import { BudgetError, acquireLock, getMeta, json, putMeta, releaseLock } from '../../lib/store.js';
-import { XError, bookmarkIdsPage, bookmarksPage, credits, lookupPosts } from '../../lib/x.js';
+import { XError, bookmarkIdsPage, bookmarksPage, credits, lookupPosts, visiblePosts } from '../../lib/x.js';
 
 const chunk = (a, n) => Array.from({ length: Math.ceil(a.length / n) }, (_, i) => a.slice(i * n, i * n + n));
 
@@ -16,7 +21,9 @@ export async function onRequestPost({ request, env }) {
   if (!(await acquireLock(env, 'sync', 180000))) return json({ error: '另一个同步正在进行' }, 409);
   try {
     const before = await credits(env);
-    const known = new Map((await env.DB.prepare('SELECT id, bookmarked FROM items').all()).results.map((r) => [r.id, r.bookmarked]));
+    const { results: rows } = await env.DB.prepare(
+      `SELECT id, bookmarked, trashed_at IS NOT NULL AS trashed, json_extract(data, '$.unavailable') IS NOT NULL AS unavailable FROM items`).all();
+    const known = new Map(rows.map((r) => [r.id, r.bookmarked]));
     const seen = new Set(); // ids currently bookmarked on X, newest first
     const fresh = new Map(); // id -> row for items not in the library yet
     let error = null, complete = false;
@@ -70,11 +77,32 @@ export async function onRequestPost({ request, env }) {
     for (const c of chunk(gone, 90)) {
       stmts.push(env.DB.prepare(`UPDATE items SET bookmarked = 0 WHERE id IN (${c.map(() => '?').join(',')})`).bind(...c));
     }
+
+    // In the library but, per a complete walk, not on the X list: just removed, or off X since earlier.
+    const offX = full && complete && !error ? rows.filter((r) => !r.trashed && !r.unavailable && !seen.has(r.id)).map((r) => r.id) : [];
+    const toBin = [], unavailable = [];
+    try {
+      for (const ids of chunk(offX, 100)) {
+        const { visible, missing } = await visiblePosts(env, ids);
+        for (const id of ids) if (visible.has(id)) toBin.push(id); else if (missing.has(id)) unavailable.push(id);
+      }
+    } catch (e) {
+      // Whatever was not checked stays as it is and is checked on the next sync.
+      if (!(e instanceof BudgetError || e instanceof XError)) throw e;
+      error = error || e.message;
+    }
+    for (const c of chunk(toBin, 90)) {
+      stmts.push(env.DB.prepare(`UPDATE items SET trashed_at = ? WHERE trashed_at IS NULL AND id IN (${c.map(() => '?').join(',')})`).bind(now, ...c));
+    }
+    for (const c of chunk(unavailable, 90)) {
+      stmts.push(env.DB.prepare(`UPDATE items SET data = json_set(data, '$.unavailable', ?) WHERE id IN (${c.map(() => '?').join(',')})`).bind(now, ...c));
+    }
     if (stmts.length) await env.DB.batch(stmts);
 
     const after = await credits(env);
     const spent = before && after ? +(before.total_balance - after.total_balance).toFixed(4) : null;
-    const result = { at: now, full, seen: seen.size, added: added.length, rebookmarked: back.length, removedOnX: gone.length, spent, error };
+    const result = { at: now, full, seen: seen.size, added: added.length, rebookmarked: back.length, removedOnX: gone.length,
+      binned: toBin.length, unavailable: unavailable.length, unresolved: offX.length - toBin.length - unavailable.length, spent, error };
     await putMeta(env, 'x:lastSync', result);
     const log = (await getMeta(env, 'x:syncLog')) || [];
     await putMeta(env, 'x:syncLog', [result, ...log].slice(0, 30));

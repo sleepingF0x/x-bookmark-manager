@@ -599,7 +599,7 @@ function rowHtml(it) {
   const score = '●'.repeat(it.score) + `<span class="off">${'●'.repeat(5 - it.score)}</span>`;
   const th = it.thumb ? `<span class="th"><img src="${esc(sized(it.thumb, 'thumb'))}" alt="" width="48" height="48" loading="lazy" referrerpolicy="no-referrer">${it.video ? '<span class="v">视频</span>' : ''}</span>` : '';
   const flag = it.cleanup !== 'keep' && !it.kept && state.view === 'browse' ? `<span class="flag ${it.cleanup}">${FLAG[it.cleanup]}</span>` : '';
-  const states = [it.pending ? '待整理' : '', it.labelError ? '模型未整理' : '',state.view === 'bin' ? (it.bookmarked ? 'X 上未移除' : '') : (!it.bookmarked && !it.trashed ? '已不在 X 收藏' : '')].filter(Boolean);
+  const states = [it.pending ? '待整理' : '', it.labelError ? '模型未整理' : '',state.view === 'bin' ? (it.bookmarked ? 'X 上未移除' : '') : (!it.bookmarked && !it.trashed ? (it.unavailable ? '原帖已删除或不可见' : '已不在 X 收藏') : '')].filter(Boolean);
   const why = state.view !== 'browse' && it.reason ? `<span class="why"><span class="flag ${it.cleanup}">${FLAG[it.cleanup] || ''}</span> ${esc(it.reason)}</span>` : '';
   return `<li class="row" data-id="${it.id}" aria-current="${it.id === state.id}">
     ${checkable ? `<label class="pick"><input type="checkbox" data-pick="${it.id}" ${sel.has(it.id) ? 'checked' : ''} aria-label="选择：${esc(it.title)}"></label>` : ''}
@@ -784,7 +784,7 @@ function readerHtml(it) {
     it.trashed ? '<button class="btn primary" type="button" data-one="restore">恢复</button>'
       : '<button class="btn" type="button" data-one="trash">移到回收站</button>',
     cand ? '<button class="btn" type="button" data-one="keep">保留</button>' : '',
-    `<span class="note" id="onenote">${it.trashed ? (it.bookmarked ? '在回收站 · X 上未移除' : '在回收站 · 已从 X 移除') : it.bookmarked ? '' : '已不在 X 收藏'}</span>`,
+    `<span class="note" id="onenote">${it.trashed ? (it.bookmarked ? '在回收站 · X 上未移除' : '在回收站 · 已从 X 移除') : it.bookmarked ? '' : it.unavailable ? '原帖已删除或不可见 · 内容只剩这份' : '已不在 X 收藏'}</span>`,
   ].join('');
   const rel = related(it);
   return `<div class="r-inner">
@@ -968,12 +968,15 @@ async function syncX(full = false) {
   try {
     const j = await post('api/x/sync' + (full ? '?full=1' : ''));
     let msg = j.added ? `新增 ${j.added} 条` : '没有新收藏';
-    if (j.removedOnX) msg += `，${j.removedOnX} 条已在 X 上取消`;
+    // Bookmarks removed on X follow into the recycle bin; posts that no longer exist stay in the library.
+    if (j.binned) msg += `，${j.binned} 条已在 X 上取消收藏，移到了回收站`;
+    if (j.unavailable) msg += `，${j.unavailable} 条原帖已删除或不可见，留在知识库`;
+    if (j.unresolved) msg += `，${j.unresolved} 条已不在 X 收藏（下次全量核对再核实）`;
     if (j.rebookmarked) msg += `，${j.rebookmarked} 条重新收藏`;
     if (j.spent != null) msg += ` · 花费 $${j.spent}`;
     setX(j.error ? `${msg} · ${j.error}` : msg, Boolean(j.error));
     const processed = await processAll();
-    if (j.added || j.removedOnX || j.rebookmarked || processed) await loadLibrary();
+    if (j.added || j.removedOnX || j.rebookmarked || j.binned || j.unavailable || processed) await loadLibrary();
     if (processed) setX(msg + ' · 已整理');
   } catch (e) { setX('同步失败：' + e.message, true); }
   xbusy = false;
