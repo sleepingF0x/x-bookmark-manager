@@ -2,7 +2,7 @@
 
 把 X（Twitter）收藏整理成一个私人知识库：自动分类、打标签、写摘要，支持关键词 + 语义搜索，按原样阅读推文和长文章，并通过 X 官方 API 与收藏夹双向同步——新收藏自动入库，在网站上清理的条目同步从 X 取消收藏，回收站可恢复。
 
-可以一键部署到 Cloudflare Workers（D1 + Workers AI），也可以用 Docker 跑在自己的服务器或电脑上；整站 Basic Auth 密码保护；分类与清理判断用你自己的 OpenAI / Anthropic 兼容模型接口。
+可以一键部署到 Cloudflare Workers（D1 + Workers AI），也可以用 Docker 跑在自己的服务器或电脑上；整站密码保护，Cloudflare 版也可以改用 Cloudflare Access 登录（邮箱验证码、Cloudflare 账号或 Google / GitHub 等）；分类与清理判断用你自己的 OpenAI / Anthropic 兼容模型接口。
 
 ## 导航
 
@@ -83,6 +83,16 @@ for s in SITE_PASSWORD X_CLIENT_ID X_CLIENT_SECRET LLM_BASE_URL LLM_API_KEY LLM_
 
 之后改配置：Cloudflare 后台 Workers & Pages → x-bookmark-manager → Settings → Variables and Secrets。
 
+#### 可选：改用 Cloudflare Access 登录
+
+默认用浏览器弹窗输入网站密码。也可以换成 Cloudflare Access：打开网站时先进入 Cloudflare 托管的登录页，用 Cloudflare 账号、邮箱验证码或你配置的 Google / GitHub 等登录，侧栏会出现「退出登录」。个人使用在 Zero Trust 免费额度内（50 个用户以内免费）。
+
+1. Workers & Pages → x-bookmark-manager → Settings → Domains & Routes，在 `workers.dev` 那一行点 **Enable Cloudflare Access**。弹窗里会显示 **团队域名**（`https://<团队名>.cloudflareaccess.com`）和 **AUD**，记下来。
+2. 点 **Manage Cloudflare Access**，在策略里只允许你自己的邮箱。想用邮箱验证码登录的话，到 Zero Trust → Integrations → Identity providers 加上 **One-time PIN**。
+3. 回到 Settings → Variables and Secrets，加两个变量：`ACCESS_TEAM_DOMAIN`（团队域名）和 `ACCESS_AUD`（AUD）。
+
+设了这两个变量后，应用会校验 Access 在每个请求上附带的签名令牌（`Cf-Access-Jwt-Assertion`），不再接受网站密码；所以即使请求绕过了 Access，没有有效令牌也会被拒绝。只设了其中一个时一律拒绝访问，避免配置写错时悄悄退回密码登录。要换回密码登录，删掉这两个变量、关掉 Access 即可。Docker 版放在 Cloudflare Tunnel + Access 后面时也可以用同样两个变量。
+
 ### 方式二：Docker + 自己的服务器（自动 HTTPS）
 
 需要一台开放了 80/443 端口的服务器，并把一个域名解析到它。
@@ -110,7 +120,8 @@ docker run -d --name x-bookmark-manager --restart unless-stopped \
 
 | 名字 | 说明 |
 |---|---|
-| `SITE_PASSWORD` | 网站密码（用户名任意）。未设置时一律拒绝访问 |
+| `SITE_PASSWORD` | 网站密码（用户名任意）。未设置时一律拒绝访问；启用 Cloudflare Access 后不再使用 |
+| `ACCESS_TEAM_DOMAIN` / `ACCESS_AUD` | 可选，改用 [Cloudflare Access](#可选改用-cloudflare-access-登录) 登录：团队域名（`https://<团队名>.cloudflareaccess.com`，只填团队名也行）与应用的 AUD。两个都要设 |
 | `X_CLIENT_ID` / `X_CLIENT_SECRET` | X App 的 OAuth 2.0 Client ID / Secret |
 | `LLM_BASE_URL` | OpenAI 兼容填到 `/v1`（如 `https://api.openai.com/v1`）；Anthropic 兼容填根地址（如 `https://api.anthropic.com`） |
 | `LLM_API_KEY` / `LLM_MODEL` | 模型接口的 key 与模型名；部署后访问 `/api/x/llmcheck?models=1` 可列出可用模型 |
@@ -194,7 +205,7 @@ Cloudflare（Workers、D1、Workers AI）在免费额度内；模型调用走你
 
 ```
 浏览器 (site/index.html)
-   │  Basic Auth（src/auth.js，静态文件也在密码之后）
+   │  登录检查（src/auth.js，静态文件也在登录之后）：网站密码，或校验 Cloudflare Access 令牌
    ▼
 src/app.js  路由 + 全部 API（两个版本共用）
    ├─ src/worker.js  Cloudflare 入口：D1、Workers AI binding、静态资源
@@ -214,7 +225,7 @@ scripts/  本地导入流水线（浏览器导出 + 长文章/线程补全 + OCR
 ```
 site/index.html              前端单页（无构建步骤）
 src/
-  app.js                     路由；auth.js 整站 Basic Auth
+  app.js                     路由；auth.js 整站登录检查（密码 / Cloudflare Access）
   worker.js                  Cloudflare Workers 入口
   node.js                    Node / Docker 入口；node/d1.js、node/ai.js 是 D1 与 Workers AI 的替身
   api/items.js embed.js      整个库（含向量）/ 搜索词向量
@@ -229,7 +240,7 @@ migrations/                  数据库表结构（D1 migrations；Node 版启动
 scripts/                     本地导入流水线；apply-sql.mjs 把 SQL 导入 Docker 版数据库
 wrangler.jsonc  package.json Cloudflare 配置（database_id 是占位符，部署按钮会自动替换）
 Dockerfile  docker-compose.yml  deploy/Caddyfile  .env.example   Docker 部署
-.github/workflows/           CI（两个版本的冒烟测试）与镜像发布（ghcr.io）
+.github/workflows/           CI（登录单元测试、两个版本的冒烟测试）与镜像发布（ghcr.io）
 ```
 
 ## 本地开发
@@ -244,7 +255,7 @@ SITE_PASSWORD=dev npm start           # Node 版：http://localhost:8787（stora
 ## 安全
 
 - 所有凭据（网站密码、X Client Secret、模型 key）只放在 Cloudflare 加密 secret 或你自己的 `.env` 里，不写进代码或仓库。X 的 OAuth token 存在你自己的数据库里。
-- 整站（包括静态文件和全部 API）都在 Basic Auth 之后；`SITE_PASSWORD` 未设置时一律返回 401。
+- 整站（包括静态文件和全部 API）都在登录检查之后：密码模式下 `SITE_PASSWORD` 未设置时一律返回 401；Cloudflare Access 模式下逐个请求校验 Access 令牌的签名、签发方（团队域名）、AUD 和有效期，校验失败返回 403。
 - `data/`（本地流水线的个人数据）、`storage/`（Docker 版数据库）、`.env`、`.dev.vars` 都在 `.gitignore` 中。**数据库文件和导出包含 OAuth token，不要分享。**
 
 ## 已知限制

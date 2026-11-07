@@ -6,3 +6,8 @@ X_CLIENT_SECRET=
 LLM_BASE_URL=
 LLM_API_KEY=
 LLM_MODEL=
+
+# Optional: sign in with Cloudflare Access instead of SITE_PASSWORD (see README).
+# Usually set in the dashboard after enabling Access, not here; wrangler dev has no Access in front.
+# ACCESS_TEAM_DOMAIN=https://<team>.cloudflareaccess.com
+# ACCESS_AUD=

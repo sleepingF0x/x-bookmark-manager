@@ -101,6 +101,8 @@ a { color: var(--accent); }
 .xbox .xmsg { margin-top: 6px; color: var(--ink-2); }
 .xbox .xmsg.err { color: var(--accent); }
 .xbox .xmsg:empty { display: none; }
+.xbox .signout { margin-top: 8px; font-size: 12px; }
+.xbox .signout a { color: var(--ink-3); }
 .xbox .acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .xbox .btn { min-height: 30px; padding: 0 12px; font: 12px var(--sans); color: var(--ink); text-decoration: none; display: inline-flex; align-items: center; }
 
@@ -328,6 +330,23 @@ const store = {
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
 };
 const $ = (s, el = document) => el.querySelector(s);
+// Cloudflare Access: once its session expires, API calls are redirected to the Access login page on
+// another origin and fetch() fails with a bare network error. Probe the page itself without
+// following redirects; a redirect means "signed out", so reload and let the browser go through login.
+// (At most once a minute, so a misconfigured Access app cannot trap the page in a reload loop.)
+{
+  const rawFetch = window.fetch.bind(window);
+  window.fetch = async (...args) => {
+    try { return await rawFetch(...args); } catch (e) {
+      const probe = await rawFetch(location.pathname, { redirect: 'manual', cache: 'no-store' }).catch(() => null);
+      if (probe?.type === 'opaqueredirect' && Date.now() - store.get('reloginAt', 0) > 60000) {
+        store.set('reloginAt', Date.now());
+        location.reload();
+      }
+      throw e;
+    }
+  };
+}
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const mobile = () => matchMedia('(max-width: 900px)').matches;
 
@@ -838,6 +857,11 @@ function ago(iso) {
 }
 function setX(msg, err = false) { xmsg = msg; xerr = err; renderX(); }
 function renderX() {
+  renderXBox();
+  // Basic auth has no way to sign out; Cloudflare Access does, at a fixed path on this site.
+  if (xs?.auth === 'access') $('#xbox').insertAdjacentHTML('beforeend', '<p class="signout"><a href="/cdn-cgi/access/logout">退出登录</a></p>');
+}
+function renderXBox() {
   const box = $('#xbox');
   const msg = `<p class="xmsg ${xerr ? 'err' : ''}" role="status">${esc(xmsg)}</p>`;
   if (!xs) { box.innerHTML = '<p>X 同步状态读取失败</p>' + msg; return; }
