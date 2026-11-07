@@ -1,6 +1,6 @@
 // Diagnostic: one tiny round trip to the configured LLM, so a bad URL/key/model shows up before a sync needs it.
 // ?models=1 lists the model ids the endpoint offers (OpenAI-style GET /models).
-import { chat, classify, llmConfigured } from '../../lib/llm.js';
+import { chat, classify, listModels, llmConfigured } from '../../lib/llm.js';
 
 // ?compare=N re-labels N random already-labelled items and returns old vs new labels side by side,
 // to judge whether the configured model labels like the one that built the library.
@@ -24,21 +24,10 @@ async function compare(env, n) {
   });
 }
 
-async function listModels(env) {
-  const base = env.LLM_BASE_URL.replace(/\/+$/, '');
-  const anthropic = (env.LLM_FORMAT || (/anthropic/i.test(base) ? 'anthropic' : 'openai')) === 'anthropic';
-  const r = await fetch(`${base}${anthropic && !/\/v1$/.test(base) ? '/v1' : ''}/models`, {
-    headers: anthropic ? { 'x-api-key': env.LLM_API_KEY, 'anthropic-version': '2023-06-01' } : { Authorization: `Bearer ${env.LLM_API_KEY}` },
-  });
-  if (!r.ok) return Response.json({ ok: false, error: `GET /models ${r.status}: ${(await r.text()).slice(0, 300)}` });
-  const { data } = await r.json();
-  return Response.json({ ok: true, current: env.LLM_MODEL, models: (data || []).map((m) => m.id) });
-}
-
 export async function onRequestGet({ request, env }) {
-  if (!llmConfigured(env)) return Response.json({ ok: false, error: '未配置 LLM_BASE_URL / LLM_API_KEY / LLM_MODEL' });
+  if (!llmConfigured(env)) return Response.json({ ok: false, error: '还没有配置模型接口（页面「设置」里填写）' });
   const q = new URL(request.url).searchParams;
-  if (q.get('models')) return listModels(env);
+  if (q.get('models')) return Response.json({ ...(await listModels(env)), current: env.LLM_MODEL });
   if (q.get('compare')) return compare(env, Math.min(20, +q.get('compare') || 10));
   const t = Date.now();
   try {

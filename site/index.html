@@ -101,8 +101,31 @@ a { color: var(--accent); }
 .xbox .xmsg { margin-top: 6px; color: var(--ink-2); }
 .xbox .xmsg.err { color: var(--accent); }
 .xbox .xmsg:empty { display: none; }
-.xbox .signout { margin-top: 8px; font-size: 12px; }
-.xbox .signout a { color: var(--ink-3); }
+.xbox .side-links { display: flex; gap: 12px; margin-top: 8px; font-size: 12px; }
+.xbox .side-links a, .xbox .side-links button { padding: 0; border: 0; background: none; color: var(--ink-3); font: inherit; text-decoration: underline; text-underline-offset: 2px; }
+@media (hover: hover) { .xbox .side-links a:hover, .xbox .side-links button:hover { color: var(--ink); } }
+.settings { width: min(540px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); padding: 0; border: 1px solid var(--rule); border-radius: var(--r-md); background: var(--paper); color: var(--ink); box-shadow: 0 24px 64px oklch(0 0 0 / 0.22); }
+.settings::backdrop { background: oklch(0.2 0.01 60 / 0.4); }
+.settings form { padding: 22px 22px 18px; }
+.settings h2 { margin: 0 0 4px; font: 600 19px/1.3 var(--serif); }
+.settings h2:focus { outline: none; }
+.settings .lede { margin: 0 0 18px; font-size: 13px; color: var(--ink-3); }
+.settings fieldset { margin: 0 0 18px; padding: 16px 0 0; border: 0; border-top: 1px solid var(--rule); min-width: 0; }
+.settings legend { float: left; width: 100%; margin: 0 0 10px; padding: 0; font-size: 13px; font-weight: 600; color: var(--ink); }
+.settings legend + * { clear: both; }
+.settings .src { margin: 0 0 12px; font: 12px/1.6 var(--mono); color: var(--ink-3); }
+.settings label { display: grid; gap: 4px; margin-bottom: 12px; font-size: 13px; color: var(--ink-2); }
+.settings input, .settings select { width: 100%; height: 38px; padding: 0 10px; border: 1px solid var(--rule); border-radius: var(--r-sm); background: var(--paper); color: var(--ink); font-size: 14px; }
+.settings input::placeholder { color: var(--ink-3); }
+.settings input:focus, .settings select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+.settings .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+.settings .hint { margin: -4px 0 12px; font-size: 12px; color: var(--ink-3); }
+.settings .inline { display: flex; flex-wrap: wrap; gap: 8px; margin: -2px 0 4px; }
+.settings .inline .btn { min-height: 30px; padding: 0 12px; font-size: 12px; }
+.settings .msg { min-height: 1.6em; margin: 0 0 10px; font-size: 13px; color: var(--ink-2); }
+.settings .msg.err { color: var(--accent); }
+.settings .acts { display: flex; justify-content: flex-end; gap: 8px; }
+@media (max-width: 480px) { .settings form { padding: 18px 16px 14px; } .settings .pair { grid-template-columns: 1fr; } }
 .xbox .acts { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
 .xbox .btn { min-height: 30px; padding: 0 12px; font: 12px var(--sans); color: var(--ink); text-decoration: none; display: inline-flex; align-items: center; }
 
@@ -316,6 +339,49 @@ mark { background: var(--mark); color: inherit; border-radius: 2px; padding: 0 1
   </section>
   <article class="reader" id="reader" aria-label="阅读"></article>
 </div>
+
+<dialog class="settings" id="settings" aria-labelledby="st-title">
+  <form id="st-form" novalidate>
+    <h2 id="st-title" tabindex="-1" autofocus>设置</h2>
+    <p class="lede">保存在这个网站自己的数据库里，优先于部署时填的变量；清空一项就改回部署时的值。</p>
+    <fieldset>
+      <legend>模型接口</legend>
+      <p class="src" id="st-llm-src"></p>
+      <label>接口格式
+        <select name="format"><option value="openai">OpenAI 兼容（DeepSeek、OpenRouter 等大多数）</option><option value="anthropic">Anthropic 兼容</option></select>
+      </label>
+      <label>接口地址
+        <input name="baseUrl" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://api.openai.com/v1">
+      </label>
+      <p class="hint">OpenAI 兼容填到 <code>/v1</code>；Anthropic 兼容填根地址，如 <code>https://api.anthropic.com</code>。</p>
+      <label>API key
+        <input name="apiKey" type="password" autocomplete="new-password" spellcheck="false">
+      </label>
+      <p class="hint" id="st-key-hint"></p>
+      <label>模型
+        <input name="model" list="st-models" autocomplete="off" spellcheck="false" placeholder="例如 gpt-5-mini、deepseek-v4-pro">
+        <datalist id="st-models"></datalist>
+      </label>
+      <div class="inline">
+        <button class="btn" type="button" data-st="models">列出可用模型</button>
+        <button class="btn" type="button" data-st="reset-llm" hidden>改回部署时的接口</button>
+      </div>
+    </fieldset>
+    <fieldset>
+      <legend>X API 每月上限</legend>
+      <div class="pair">
+        <label>读取（条）<input name="readCap" type="number" min="1" max="1000000" step="1" inputmode="numeric"></label>
+        <label>写入（次）<input name="writeCap" type="number" min="1" max="1000000" step="1" inputmode="numeric"></label>
+      </div>
+      <p class="hint" id="st-cap-hint"></p>
+    </fieldset>
+    <p class="msg" id="st-msg" role="status"></p>
+    <div class="acts">
+      <button class="btn" type="button" data-st="close">关闭</button>
+      <button class="btn primary" type="submit">保存</button>
+    </div>
+  </form>
+</dialog>
 
 <script>
 const CATEGORIES = ['AI 编程与 Agent', 'AI 创作与应用', '开发与开源工具', '加密与 Web3', '投资理财与出入金',
@@ -533,7 +599,7 @@ function rowHtml(it) {
   const score = '●'.repeat(it.score) + `<span class="off">${'●'.repeat(5 - it.score)}</span>`;
   const th = it.thumb ? `<span class="th"><img src="${esc(sized(it.thumb, 'thumb'))}" alt="" width="48" height="48" loading="lazy" referrerpolicy="no-referrer">${it.video ? '<span class="v">视频</span>' : ''}</span>` : '';
   const flag = it.cleanup !== 'keep' && !it.kept && state.view === 'browse' ? `<span class="flag ${it.cleanup}">${FLAG[it.cleanup]}</span>` : '';
-  const states = [it.pending ? '待整理' : '', it.labelError ? '模型未整理' : '', state.view === 'bin' ? (it.bookmarked ? 'X 上未移除' : '') : (!it.bookmarked && !it.trashed ? '已不在 X 收藏' : '')].filter(Boolean);
+  const states = [it.pending ? '待整理' : '', it.labelError ? '模型未整理' : '',state.view === 'bin' ? (it.bookmarked ? 'X 上未移除' : '') : (!it.bookmarked && !it.trashed ? '已不在 X 收藏' : '')].filter(Boolean);
   const why = state.view !== 'browse' && it.reason ? `<span class="why"><span class="flag ${it.cleanup}">${FLAG[it.cleanup] || ''}</span> ${esc(it.reason)}</span>` : '';
   return `<li class="row" data-id="${it.id}" aria-current="${it.id === state.id}">
     ${checkable ? `<label class="pick"><input type="checkbox" data-pick="${it.id}" ${sel.has(it.id) ? 'checked' : ''} aria-label="选择：${esc(it.title)}"></label>` : ''}
@@ -859,7 +925,8 @@ function setX(msg, err = false) { xmsg = msg; xerr = err; renderX(); }
 function renderX() {
   renderXBox();
   // Basic auth has no way to sign out; Cloudflare Access does, at a fixed path on this site.
-  if (xs?.auth === 'access') $('#xbox').insertAdjacentHTML('beforeend', '<p class="signout"><a href="/cdn-cgi/access/logout">退出登录</a></p>');
+  $('#xbox').insertAdjacentHTML('beforeend', `<p class="side-links"><button type="button" data-open-settings>设置</button>${
+    xs?.auth === 'access' ? '<a href="/cdn-cgi/access/logout">退出登录</a>' : ''}</p>`);
 }
 function renderXBox() {
   const box = $('#xbox');
@@ -982,13 +1049,96 @@ $('#reader').addEventListener('click', (e) => {
 });
 
 $('#xbox').addEventListener('click', (e) => {
+  if (e.target.closest('[data-open-settings]')) return openSettings();
   const b = e.target.closest('[data-x]');
   if (b) syncX(b.dataset.x === 'full');
+});
+// ---------- settings panel (GET/POST api/settings; keys are never sent back to the page) ----------
+let st = null;
+const stForm = $('#st-form'), stDialog = $('#settings');
+const FROM = { page: '页面设置', env: '部署时的变量', default: '默认值' };
+function stMsg(msg, err = false) { const el = $('#st-msg'); el.textContent = msg; el.classList.toggle('err', err); }
+const stEndpoint = () => ({ format: stForm.elements.format.value, baseUrl: stForm.elements.baseUrl.value.trim().replace(/\/+$/, '') });
+const stEndpointChanged = () => { const e = stEndpoint(); return e.format !== st.llm.format || e.baseUrl !== st.llm.baseUrl; };
+function fillSettings() {
+  const f = stForm.elements, l = st.llm;
+  f.format.value = l.format;
+  f.baseUrl.value = l.baseUrl;
+  f.apiKey.value = '';
+  f.apiKey.placeholder = l.hasKey ? '已保存，不更换就留空' : '必填';
+  $('#st-llm-src').textContent = l.source
+    ? `当前使用：${FROM[l.source]}${l.keyHint ? ` · key 末四位 ${l.keyHint}` : ''}`
+    : '还没有配置：新收藏不会被分类，也不能做清理判断。';
+  $('#st-key-hint').textContent = '更换接口地址或格式时要重新填写 key：已保存的 key 只会发往它对应的地址。';
+  const reset = $('[data-st="reset-llm"]');
+  reset.hidden = l.source !== 'page';
+  reset.textContent = l.envAvailable ? '改回部署时的接口' : '清除这个接口';
+  f.model.value = st.model.page || '';
+  f.model.placeholder = st.model.fallback ? `${st.model.fallback}（部署时的变量）` : '例如 gpt-5-mini、deepseek-v4-pro';
+  for (const k of ['readCap', 'writeCap']) {
+    f[k].value = st[k].page ?? '';
+    f[k].placeholder = `${st[k].fallback}（${FROM[st[k].fallbackFrom]}）`;
+  }
+  const u = xs?.usage;
+  $('#st-cap-hint').textContent = `${u ? `本月已用：读 ${u.reads} · 写 ${u.writes}。` : ''}首次导入前把读取上限临时调到收藏数的 3 倍左右，导完清空即可。代码里的上限和 X 后台的消费上限互相独立，建议两边都设。`;
+}
+async function openSettings() {
+  stMsg('');
+  try {
+    const r = await fetch('api/settings');
+    if (!r.ok) throw new Error(r.status);
+    st = await r.json();
+  } catch (e) { setX('设置读取失败：' + e.message, true); return; }
+  fillSettings();
+  stDialog.showModal();
+  stDialog.scrollTop = 0; // focusing the first field can scroll the title out of view
+}
+async function stSave(body, done) {
+  const submit = stForm.querySelector('[type="submit"]');
+  submit.disabled = true;
+  stMsg(body.llm || 'model' in body ? '保存中（会先用新设置试连一次模型）…' : '保存中…');
+  try {
+    st = await post('api/settings', body);
+    fillSettings();
+    stMsg(done);
+    refreshX();
+  } catch (e) { stMsg(e.message, true); }
+  submit.disabled = false;
+}
+stForm.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const f = stForm.elements, key = f.apiKey.value.trim();
+  const num = (v) => (v.trim() === '' ? null : Number(v));
+  const body = { readCap: num(f.readCap.value), writeCap: num(f.writeCap.value) };
+  const model = f.model.value.trim() || null;
+  if (model !== (st.model.page || null)) body.model = model;
+  if (key) body.llm = { ...stEndpoint(), apiKey: key };
+  else if (stEndpointChanged()) return stMsg('更换接口地址或格式时需要重新填写 API key', true);
+  stSave(body, '已保存');
+});
+stForm.addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-st]');
+  if (!b) return;
+  if (b.dataset.st === 'close') return stDialog.close();
+  if (b.dataset.st === 'reset-llm') {
+    if (!confirm(st.llm.envAvailable ? '删除页面里保存的模型接口和 key，改回部署时的变量？' : '删除页面里保存的模型接口和 key？之后新收藏不会被分类，直到重新填写。')) return;
+    return stSave({ llm: null }, st.llm.envAvailable ? '已改回部署时的接口' : '已清除');
+  }
+  if (b.dataset.st === 'models') {
+    const key = stForm.elements.apiKey.value.trim();
+    if (!key && stEndpointChanged()) return stMsg('换了接口地址或格式，先填写 API key 再列出模型', true);
+    stMsg('读取模型列表…');
+    try {
+      const j = await post('api/settings/models', key ? { llm: { ...stEndpoint(), apiKey: key } } : {});
+      $('#st-models').innerHTML = j.models.map((m) => `<option value="${esc(m)}"></option>`).join('');
+      stMsg(j.models.length ? `找到 ${j.models.length} 个模型：在「模型」框里输入或点选` : '接口没有返回模型列表，直接填写模型名即可');
+    } catch (err) { stMsg('读取失败：' + err.message, true); }
+  }
 });
 
 // Keyboard: / search, ↑↓ (or j/k) move through the list, Esc closes the reader on phones.
 document.addEventListener('keydown', (e) => {
-  if (/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) || e.metaKey || e.ctrlKey || e.altKey) return;
+  if (/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName) || e.metaKey || e.ctrlKey || e.altKey || stDialog.open) return;
   if (e.key === '/' && $('#q')) { e.preventDefault(); $('#q').focus(); return; }
   if (e.key === 'Escape' && document.body.classList.contains('reading')) { closeReader(); return; }
   const step = { ArrowDown: 1, j: 1, ArrowUp: -1, k: -1 }[e.key];

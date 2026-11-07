@@ -42,12 +42,12 @@
 
 1. **准备账号**：GitHub（部署按钮会把仓库复制到你名下）、Cloudflare（免费版即可）、X 开发者账号（用你的 X 账号登录 [console.x.com](https://console.x.com) 开通）、一个模型接口的 key。
 2. **创建 X App 并充值**：按下方「[X App 设置](#x-app-设置三种方式都要)」填写，Callback URI 先填 `http://127.0.0.1:8787/api/x/callback` 占位，第 4 步再改；记下 Client ID 和 Client Secret。充值少量额度（比如 $5），**不要开 auto-recharge**。
-3. **部署**：点下方「[Deploy to Cloudflare](#方式一cloudflare-workers推荐)」按钮，在表单里填网站密码、X 的 Client ID / Secret、模型接口（`LLM_BASE_URL`、`LLM_API_KEY`、`LLM_MODEL`）。完成后得到 `https://x-bookmark-manager.<你的子域>.workers.dev`。
+3. **部署**：点下方「[Deploy to Cloudflare](#方式一cloudflare-workers推荐)」按钮，在表单里填网站密码和 X 的 Client ID / Secret。完成后得到 `https://x-bookmark-manager.<你的子域>.workers.dev`。
 4. **改回调地址**：回到 X App，把 Callback URI 改成 `<你的网站地址>/api/x/callback`，必须一字不差。
-5. **导入收藏**：先在 Cloudflare 后台 Workers & Pages → x-bookmark-manager → Settings → Variables and Secrets 加一个变量 `X_MONTHLY_READ_CAP`，值设为收藏数的 3 倍左右（默认 1500 只够导七八百条，导完再删掉）。然后打开网站，用你的密码登录（用户名任意），点左下角「连接 X」并授权，再点「同步」。每次同步最多整理 600 条，显示「待整理」时再点一次「同步」继续。细节见「[导入已有收藏](#导入已有收藏)」。
+5. **填模型、导入收藏**：打开网站，用你的密码登录（用户名任意），点左下角「设置」：填模型接口（格式、地址、API key，再点「列出可用模型」选一个模型），并把「X API 每月上限」的读取上限临时调到收藏数的 3 倍左右（默认 1500 只够导七八百条，导完清空）。保存时会先试连一次模型，填错了会直接提示。然后点「连接 X」并授权，再点「同步」。每次同步最多整理 600 条，显示「待整理」时再点一次「同步」继续。细节见「[导入已有收藏](#导入已有收藏)」。
 6. **清理**：打开「待清理」，模型判为过期或垃圾的条目默认全选；取消勾选想留的，或点「保留」让它以后不再出现，然后点「移到回收站」，这些条目会同时从 X 收藏夹取消。回收站里点「恢复」会重新收藏到 X，确认无误后再「彻底删除」。细节见「[清理与回收站](#清理与回收站)」。
 
-以 1000 条收藏为例：首次导入约 $1–3，清理 200 条约 $1（每条 $0.005），之后日常每月几毛钱。用 Docker 部署时第 3 步换成下方方式二或三，其余步骤相同；Docker 版回调地址里的网站地址就是你的 `PUBLIC_URL`。
+以 1000 条收藏为例：首次导入约 $1–3，清理 200 条约 $1（每条 $0.005），之后日常每月几毛钱。用 Docker 部署时第 3 步换成下方方式二或三，其余步骤相同；回调地址里的网站地址就是你在浏览器里打开它的地址。
 
 ## 部署
 
@@ -66,9 +66,9 @@
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/sleepingF0x/x-bookmark-manager)
 
-1. 点上面的按钮，登录 Cloudflare。它会把仓库复制到你的 GitHub、自动创建 D1 数据库，并让你填写：网站密码、X 的 Client ID / Secret、模型接口（`LLM_BASE_URL`、`LLM_API_KEY`、`LLM_MODEL`）。
+1. 点上面的按钮，登录 Cloudflare。它会把仓库复制到你的 GitHub、自动创建 D1 数据库，并让你填写网站密码和 X 的 Client ID / Secret。
 2. 部署完成后得到 `https://x-bookmark-manager.<你的子域>.workers.dev`，把 `这个地址/api/x/callback` 填回 X App 的 Callback URI。
-3. 打开网站，用你设的密码登录（用户名任意），点「连接 X」。
+3. 打开网站，用你设的密码登录（用户名任意），在左下角「设置」里填模型接口，再点「连接 X」。
 
 也可以用命令行部署：
 
@@ -78,10 +78,10 @@ npm install
 npx wrangler login
 npx wrangler d1 create x-bookmark-manager      # 把输出的 database_id 填进 wrangler.jsonc
 npm run deploy                                 # 建表（D1 migrations）+ 部署
-for s in SITE_PASSWORD X_CLIENT_ID X_CLIENT_SECRET LLM_BASE_URL LLM_API_KEY LLM_MODEL; do npx wrangler secret put $s; done
+for s in SITE_PASSWORD X_CLIENT_ID X_CLIENT_SECRET; do npx wrangler secret put $s; done
 ```
 
-之后改配置：Cloudflare 后台 Workers & Pages → x-bookmark-manager → Settings → Variables and Secrets。
+模型接口和 X API 上限在网站的「设置」里改；网站密码和 X App 凭据在 Cloudflare 后台 Workers & Pages → x-bookmark-manager → Settings → Variables and Secrets。
 
 #### 可选：改用 Cloudflare Access 登录
 
@@ -125,7 +125,7 @@ Worker 的 Settings → Variables and Secrets，加两个普通变量（不是 s
 
 ```bash
 git clone https://github.com/sleepingF0x/x-bookmark-manager.git && cd x-bookmark-manager
-cp .env.example .env     # 填 DOMAIN、PUBLIC_URL=https://<DOMAIN>、密码、X、模型、Cloudflare Workers AI
+cp .env.example .env     # 填 DOMAIN、密码、X、Cloudflare Workers AI；模型接口之后在网站「设置」里填
 docker compose up -d
 ```
 
@@ -134,29 +134,42 @@ docker compose up -d
 ### 方式三：Docker 在自己电脑上
 
 ```bash
-cp .env.example .env     # 保持 PUBLIC_URL=http://127.0.0.1:8787，填密码、X、模型、Cloudflare Workers AI
+cp .env.example .env     # 填密码、X、Cloudflare Workers AI；模型接口之后在网站「设置」里填
 docker run -d --name x-bookmark-manager --restart unless-stopped \
   -p 127.0.0.1:8787:8787 --env-file .env -v "$PWD/storage:/data" \
   ghcr.io/sleepingf0x/x-bookmark-manager:latest
 ```
 
-网站地址 `http://127.0.0.1:8787`，X App 的 Callback URI 填 `http://127.0.0.1:8787/api/x/callback`。不用 Docker 也行：Node.js 22.13+ 下 `npm start`（读取同样的环境变量）。
+网站地址 `http://127.0.0.1:8787`（用这个地址打开，不要用 `localhost`），X App 的 Callback URI 填 `http://127.0.0.1:8787/api/x/callback`。不用 Docker 也行：Node.js 22.13+ 下 `npm start`（读取同样的环境变量）。
 
 ### 配置项
+
+部署时需要的环境变量：
 
 | 名字 | 说明 |
 |---|---|
 | `SITE_PASSWORD` | 网站密码（用户名任意）。未设置时一律拒绝访问；启用 Cloudflare Access 后不再使用 |
-| `ACCESS_TEAM_DOMAIN` / `ACCESS_AUD` | 可选，改用 [Cloudflare Access](#可选改用-cloudflare-access-登录) 登录：团队域名（`https://<团队名>.cloudflareaccess.com`，只填团队名也行）与应用的 AUD。两个都要设 |
 | `X_CLIENT_ID` / `X_CLIENT_SECRET` | X App 的 OAuth 2.0 Client ID / Secret |
-| `LLM_BASE_URL` | OpenAI 兼容填到 `/v1`（如 `https://api.openai.com/v1`）；Anthropic 兼容填根地址（如 `https://api.anthropic.com`） |
-| `LLM_API_KEY` / `LLM_MODEL` | 模型接口的 key 与模型名；部署后访问 `/api/x/llmcheck?models=1` 可列出可用模型 |
-| `LLM_FORMAT` | 可选，`openai` 或 `anthropic`；不填时 URL 含 anthropic 即按 Anthropic 格式 |
-| `X_MONTHLY_READ_CAP` / `X_MONTHLY_WRITE_CAP` | 可选，X API 月度上限，默认 1500 / 200 |
-| `PUBLIC_URL` | 仅 Docker：网站的公开地址，用来生成 X 回调地址 |
 | `DOMAIN` | 仅 docker-compose：Caddy 申请证书的域名 |
 | `CLOUDFLARE_ACCOUNT_ID` / `CLOUDFLARE_API_TOKEN` | 仅 Docker：调用 Workers AI 生成搜索向量（`@cf/baai/bge-m3`，与 Cloudflare 版同一模型）。Token 需要 Workers AI 读权限 |
+
+可选的环境变量：
+
+| 名字 | 说明 |
+|---|---|
+| `ACCESS_TEAM_DOMAIN` / `ACCESS_AUD` | 改用 [Cloudflare Access](#可选改用-cloudflare-access-登录) 登录：团队域名（`https://<团队名>.cloudflareaccess.com`，只填团队名也行）与应用的 AUD。两个都要设 |
+| `PUBLIC_URL` | 仅 Docker：网站的公开地址，用来生成 X 回调地址。一般不用填：经过 Caddy 等反向代理时从 `X-Forwarded-Proto` / `Host` 推出来，本机就是你打开的地址；代理不转发这两个请求头时才需要 |
 | `DB_PATH` / `PORT` | 仅 Docker / Node：数据库文件路径（镜像内默认 `/data/x-bookmarks.db`）与端口（默认 8787） |
+
+**在网站「设置」里改的**（不用碰部署配置，改完立即生效）：
+
+| 设置 | 说明 |
+|---|---|
+| 模型接口 | 格式（OpenAI / Anthropic 兼容）、地址、API key。OpenAI 兼容填到 `/v1`（如 `https://api.openai.com/v1`），Anthropic 兼容填根地址（如 `https://api.anthropic.com`）。「列出可用模型」读接口的模型列表 |
+| 模型 | 模型名，如 `gpt-5-mini`、`deepseek-v4-pro`。保存模型或接口时会先试连一次，失败就不保存 |
+| X API 每月上限 | 读取 / 写入，默认 1500 / 200 |
+
+旧部署里的 `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL` / `LLM_FORMAT` 和 `X_MONTHLY_READ_CAP` / `X_MONTHLY_WRITE_CAP` 仍然有效，作为「设置」里没填时的值；「设置」里填了的优先，清空就改回这些变量。
 
 ### 连接 X 时的常见问题
 
@@ -167,7 +180,7 @@ docker run -d --name x-bookmark-manager --restart unless-stopped \
 
 **方法 A：直接用网站同步（任何系统）**。数据库为空时，第一次同步会从最新往前把收藏一页页全部拉进来，再分批用你的模型整理。
 
-- 首次导入前把 `X_MONTHLY_READ_CAP` 临时调到收藏数的 3 倍左右（计数包含作者和被引用的帖子），否则默认的 1500 会在七八百条处停下；导完再改回来。
+- 首次导入前在「设置」里把读取上限临时调到收藏数的 3 倍左右（计数包含作者和被引用的帖子），否则默认的 1500 会在七八百条处停下；导完清空即可。
 - 一次同步最多翻约 2700 条；收藏更多时，之后点一次「全量核对」补齐剩下的。
 - 每次同步最多整理 600 条，剩下的显示为「待整理」，再点一次「同步」继续。
 - 模型连续 3 轮都处理不了的条目（比如被模型接口的内容审核拦截）会放进「未分类」并标「模型未整理」，不再挡住后面的条目；接口本身不可用（key 错误、模型名不对、限流）时整理会停下，不会这样放弃。
@@ -262,6 +275,7 @@ src/
   api/x/login.js callback.js X OAuth
   api/x/sync.js process.js   同步 / 为新条目分类 + 生成向量
   api/x/status.js llmcheck.js  连接与用量 / 模型诊断（?models=1 列模型，?compare=N 与现有标签对比）
+  api/settings.js            「设置」面板：模型接口、模型、X API 上限（lib/settings.js 叠加在环境变量之上）
   lib/                       X API 客户端、条目转换、模型调用与提示词、存储与月度预算
 migrations/                  数据库表结构（D1 migrations；Node 版启动时自动执行）
 scripts/                     本地导入流水线；apply-sql.mjs 把 SQL 导入 Docker 版数据库
@@ -282,7 +296,7 @@ npm test                              # 登录、核心流程（X 与模型接�
 
 ## 安全
 
-- 所有凭据（网站密码、X Client Secret、模型 key）只放在 Cloudflare 加密 secret 或你自己的 `.env` 里，不写进代码或仓库。X 的 OAuth token 存在你自己的数据库里。
+- 网站密码和 X Client Secret 只放在 Cloudflare 加密 secret 或你自己的 `.env` 里，不写进代码或仓库。X 的 OAuth token 和「设置」里填的模型 key 存在你自己的数据库里；模型 key 只写不读，接口不会把它返回给页面（只显示末四位），换接口地址必须重新填 key，所以已保存的 key 不会被发往别的地址。
 - 整站（包括静态文件和全部 API）都在登录检查之后：密码模式下 `SITE_PASSWORD` 未设置时一律返回 401；Cloudflare Access 模式下逐个请求校验 Access 令牌的签名、签发方（团队域名）、AUD 和有效期，校验失败返回 403。
 - 拒绝其他网站发起的 API 请求（浏览器标记的 `Sec-Fetch-Site`），写操作只接受 `application/json`：别的网页没法借你已登录的浏览器去同步、清理或调用模型花钱。
 - `data/`（本地流水线的个人数据）、`storage/`（Docker 版数据库）、`.env`、`.dev.vars` 都在 `.gitignore` 中。**数据库文件和导出包含 OAuth token，不要分享。**
