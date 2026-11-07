@@ -85,13 +85,39 @@ for s in SITE_PASSWORD X_CLIENT_ID X_CLIENT_SECRET LLM_BASE_URL LLM_API_KEY LLM_
 
 #### 可选：改用 Cloudflare Access 登录
 
-默认用浏览器弹窗输入网站密码。也可以换成 Cloudflare Access：打开网站时先进入 Cloudflare 托管的登录页，用 Cloudflare 账号、邮箱验证码或你配置的 Google / GitHub 等登录，侧栏会出现「退出登录」。个人使用在 Zero Trust 免费额度内（50 个用户以内免费）。
+默认用浏览器弹窗输入网站密码。也可以换成 Cloudflare Access：打开网站时先进入 Cloudflare 托管的登录页（Cloudflare 账号、邮箱验证码或你配置的 Google / GitHub 等），不用再记网站密码，侧栏会出现「退出登录」。个人使用在 Zero Trust 免费版内（50 个用户以内免费）；第一次用要先在控制台开通 Zero Trust 并起一个团队名。
 
-1. Workers & Pages → x-bookmark-manager → Settings → Domains & Routes，在 `workers.dev` 那一行点 **Enable Cloudflare Access**。弹窗里会显示 **团队域名**（`https://<团队名>.cloudflareaccess.com`）和 **AUD**，记下来。
-2. 点 **Manage Cloudflare Access**，在策略里只允许你自己的邮箱。想用邮箱验证码登录的话，到 Zero Trust → Integrations → Identity providers 加上 **One-time PIN**。
-3. 回到 Settings → Variables and Secrets，加两个变量：`ACCESS_TEAM_DOMAIN`（团队域名）和 `ACCESS_AUD`（AUD）。
+**1. 给 Worker 打开 Access**
 
-设了这两个变量后，应用会校验 Access 在每个请求上附带的签名令牌（`Cf-Access-Jwt-Assertion`），不再接受网站密码；所以即使请求绕过了 Access，没有有效令牌也会被拒绝。只设了其中一个时一律拒绝访问，避免配置写错时悄悄退回密码登录。要换回密码登录，删掉这两个变量、关掉 Access 即可。Docker 版放在 Cloudflare Tunnel + Access 后面时也可以用同样两个变量。
+Workers & Pages → x-bookmark-manager → **Access** 标签 → **Protect this Worker behind Access**：
+
+- 范围选 **All traffic**（不要选 Previews only，否则正式地址不受保护，设了下面的变量后会一律 403）。
+- Authentication policy 选 **Cloudflare account**：只有你这个 Cloudflare 账号的成员能登录，个人账号就是你自己，登录用的就是 Cloudflare 账号（含两步验证）。
+- 会话时长默认 24 小时，可在 15 分钟到 1 个月之间调整。
+
+> 不要选 Email domain 再填 `gmail.com`、`qq.com` 这类公共邮箱域名——那等于放行所有用这个邮箱服务的人。想按具体邮箱放行，建好后到 Zero Trust → Access controls → Policies 编辑这条策略，加 **Include → Emails → 你的邮箱**。
+
+**2. 加两个变量**
+
+Worker 的 Settings → Variables and Secrets，加两个普通变量（不是 secret，也不会被重新部署清掉）：
+
+| 变量 | 填什么 | 在哪找 |
+|---|---|---|
+| `ACCESS_TEAM_DOMAIN` | `https://<团队名>.cloudflareaccess.com`（只填团队名也行） | 开通 Zero Trust 时起的团队名 |
+| `ACCESS_AUD` | 一长串十六进制 | Zero Trust → Access controls → Applications → 这个 Worker 的应用 → Edit → Additional settings → **Application Audience (AUD) Tag** |
+
+**3. 确认**
+
+用无痕窗口打开网站：应该只出现 Cloudflare 登录页、不再弹密码框，登录后侧栏底部有「退出登录」。
+
+**说明**
+
+- 设了这两个变量后，应用会逐个请求校验 Access 附带的签名令牌（`Cf-Access-Jwt-Assertion`：签名、团队域名、AUD、有效期），不再接受网站密码；即使请求绕过了 Access，没有有效令牌也进不来。
+- 只设了其中一个时一律拒绝访问（500「配置不完整」），避免配置写错时悄悄退回密码登录。所以从旧版本升级时，**先把两个变量都加好，再部署新代码**。
+- 应用只认「这是 Access 为本应用签发的有效令牌」，不再单独检查邮箱：谁能登录完全由第 1 步的策略决定。
+- 要换回密码登录：删掉这两个变量（在控制台保存即生效，不用重新部署；`SITE_PASSWORD` 要还在），再在 Access 标签里关掉保护。
+- 旧入口 Settings → Domains & Routes → `workers.dev` 一行的 **Enable Cloudflare Access** 也能用，但只保护 workers.dev 和预览地址；Access 标签会把这个 Worker 的所有地址（含自定义域名）一起保护。
+- Docker 版放在 Cloudflare Tunnel + Access 后面时，也可以用同样两个变量。
 
 ### 方式二：Docker + 自己的服务器（自动 HTTPS）
 
